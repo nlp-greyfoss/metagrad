@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Tuple
 import numpy as np
 
 from core.tensor import Tensor
@@ -49,6 +49,31 @@ class _Function:
         return ret
 
 
+def unbroadcast(grad: np.ndarray, in_shape: Tuple) -> np.ndarray:
+    '''
+    广播操作的逆操作，确保grad转换成in_shape的形状
+    Args:
+        grad: 梯度
+        in_shape: 梯度要转换的形状
+    Returns:
+    '''
+    # 首先计算维度个数之差
+    ndims_added = grad.ndim - len(in_shape)
+    # 由于广播时，先从左边插入，再进行复制，所以逆操作时，也从左边开始，进行复制的逆操作（求和）
+    for _ in range(ndims_added):
+        # 在axis=0上进行求和，去掉第0个维度，如果ndims_added > 1，就需要不停的在第0个维度上面求和
+        grad = grad.sum(axis=0)
+
+    # 处理 (2,3) + (1,3) => (2,3) grad的情况
+    # 看in_shape中有没有维度=1的情况
+    for i, dim in enumerate(in_shape):
+        if dim == 1:
+            # 那么需要在该axis上求和，并且保持维度 这里(2,3) => (1,3) grad 就和输入维度保持一致了
+            grad = grad.sum(axis=i, keepdims=True)
+
+    return grad
+
+
 class Add(_Function):
 
     def forward(ctx, x: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -62,8 +87,9 @@ class Add(_Function):
         return x + y
 
     def backward(ctx, grad: Any) -> Any:
+        shape_x, shape_y = ctx.saved_tensors
         # 输入有两个，都是需要计算梯度的，因此输出也是两个
-        return grad, grad
+        return unbroadcast(grad, shape_x), unbroadcast(grad, shape_y)
 
 
 class Mul(_Function):
