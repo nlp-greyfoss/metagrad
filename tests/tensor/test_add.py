@@ -45,4 +45,16 @@ def test_broadcast_add():
     z.backward(Tensor(np.ones_like(x.data)))  # grad.shape == z.shape
 
     assert x.grad.data.tolist() == np.ones_like(x.data).tolist()
-    assert y.grad.data.tolist == [2, 2]
+    assert y.grad.data.tolist() == np.array([2, 2, 2]).tolist()
+
+
+def test_broadcast_add2():
+    x = Tensor(np.random.randn(2, 3), requires_grad=True)  # (2,3)
+    y = Tensor(np.random.randn(1, 3), requires_grad=True)  # (1,3)
+
+    z = x + y  # (2,3)
+
+    z.backward(Tensor(np.ones_like(x.data)))  # grad.shape == z.shape
+
+    assert x.grad.data.tolist() == np.ones_like(x.data).tolist()
+    assert y.grad.data.tolist() == (np.ones_like(y.data) * 2).tolist()

@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - '!master'   # 排除master，在其他分支提交代码时，需要进行测试
+      - '*'
 
 # 一个workflow由一个或多个job组成
 jobs:
@@ -26,6 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
+          pip install pytest
           pip install -r requirements.txt
       - name: Run unit tests # 跑测试
         run: |
