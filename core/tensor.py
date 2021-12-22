@@ -1,4 +1,6 @@
-from typing import Union, Tuple, Any
+import importlib
+import inspect
+from typing import Union, Tuple
 
 
 import numpy as np
@@ -32,78 +34,6 @@ def ensure_tensor(tensoralbe: Tensorable) -> "Tensor":
     if isinstance(tensoralbe, Tensor):
         return tensoralbe
     return Tensor(tensoralbe)
-
-
-class _Function:
-    def __init__(self, *tensors: "Tensor") -> None:
-        # 该操作所依赖的所有输入
-        self.depends_on = [t for t in tensors]
-        # 保存需要在backward()中使用的Tensor或其他对象(如Shape)
-        self.saved_tensors = []
-
-    def __new__(cls, *args, **kwargs):
-        '''__new__是静态方法，当该类被实例化时调用'''
-        # 把这两个方法转换为静态方法，我们可以通过类名直接调用
-        cls.forward = staticmethod(cls.forward)
-        cls.backward = staticmethod(cls.backward)
-        return super().__new__(cls)
-
-    def save_for_backward(ctx, *x: Any) -> None:
-        ctx.saved_tensors.extend(x)
-
-    def forward(ctx, *args: Any, **kwargs: Any) -> np.ndarray:
-        '''前向传播，进行真正运算的地方'''
-        raise NotImplementedError("You must implement the forward function for custom Function.")
-
-    def backward(ctx, grad: Any) -> Any:
-        '''实现反向传播，计算梯度'''
-        raise NotImplementedError("You must implement the backward method for your custom Function "
-                                  "to use it with backward mode AD.")
-
-    def apply(self, ctx, *xs: "Tensor", **kwargs) -> "Tensor":
-        '''与PyTorch一样，我们也不直接调用forward，而是调用此方法'''
-        # 先调用构造函数，传入运算依赖的Tensor
-        # [t.data for t in xs]遍历Tensor中的data(np.ndarray)值，参与实际计算的都是NumPy的数组。
-        ret = Tensor(self.forward(ctx, *[t.data for t in xs], **kwargs),
-                     requires_grad=any([t.requires_grad for t in xs]))
-
-        if ret.requires_grad:
-            ret._ctx = ctx
-
-        return ret
-
-
-class Add(_Function):
-
-    def forward(ctx, x: np.ndarray, y: np.ndarray) -> np.ndarray:
-        '''
-        实现 z = x + y ，我们这里的x和y都是Numpy数组，因此可能发生广播，
-        在实现反向传播是需要注意
-        '''
-        # 我们只要保存输入各自的形状即可
-        ctx.save_for_backward(x.shape, y.shape)
-        # 进行真正的运算
-        return x + y
-
-    def backward(ctx, grad: Any) -> Any:
-        # 输入有两个，都是需要计算梯度的，因此输出也是两个
-        return grad, grad
-
-
-class Mul(_Function):
-
-    def forward(ctx, x: np.ndarray, y: np.ndarray) -> np.ndarray:
-        '''
-        实现 z = x * y
-        '''
-        # 乘法需要保存输入x和y，用于反向传播
-        ctx.save_for_backward(x, y)
-        return x * y
-
-    def backward(ctx, grad: Any) -> Any:
-        x, y = ctx.saved_tensors
-        # 分别返回∂L/∂x 和 ∂L/∂y
-        return grad * y, grad * x
 
 
 class Tensor:
@@ -192,14 +122,6 @@ class Tensor:
         """转换为Numpy数组"""
         return self.data
 
-    def __add__(self, other):
-        ctx = Add(self, ensure_tensor(other))
-        return ctx.apply(ctx, self, ensure_tensor(other))
-
-    def __mul__(self, other):
-        ctx = Mul(self, ensure_tensor(other))
-        return ctx.apply(ctx, self, ensure_tensor(other))
-
     """
      backward函数现在应该从当前节点(Tensor)回溯到所有依赖节点(depends_on)，计算路径上的偏导
         # 我们分为两部分
@@ -241,12 +163,16 @@ class Tensor:
         # 只能在requires_grad=True的Tensor上调用此方法
         assert self.requires_grad, "called backward on tensor do not require grad"
 
-        self._grad = grad
         # 如果传递过来的grad为空
         if grad is None:
             if self.shape == ():
                 # 设置梯度值为1，grad本身不需要计算梯度
                 self._grad = Tensor(1)
+            else:
+                # 如果当前Tensor得到不是标量，那么grad必须制定
+                raise RuntimeError("grad must be specified for non scalar")
+        else:
+            self._grad = ensure_tensor(grad)
 
         for t in self._rev_topo_sort():
             assert t.grad is not None
@@ -267,14 +193,39 @@ class Tensor:
                     t._grad = gt if t.grad is None else t.grad + gt
 
 
-'''
-ops.py保存所有运算操作相关的类
-'''
+def register(name, fxn):
 
-if __name__ == '__main__':
-    a, b = Tensor(2, requires_grad=True), Tensor(1, requires_grad=True)
-    e = (a + b) * (b + 1)
-    e.backward()
-    print(f'grad of a:{a.grad}')
-    print(f'grad of b:{b.grad}')
+    def dispatch(*xs, **kwargs):
+        # 把所有的输入都转换为Tensor
+        xs = [ensure_tensor(x) for x in xs]
+        # 调用apply方法
+        return fxn.apply(fxn, *xs, **kwargs)
+
+    # 为Tensor添加属性，名为name，值为dispatch函数引用
+    setattr(Tensor, name, dispatch)
+
+    # 这几个方法都有__xx__, __ixx__, __rxx__ 魔法方法
+    if name in ["add", "sub", "mul", "matmul"]:
+        setattr(Tensor, f"__{name}__", dispatch)
+        setattr(
+            Tensor, f"__i{name}__", lambda self, x: self.assign(dispatch(self, x))
+        )  # __i*__ 代表原地操作
+        setattr(
+            Tensor, f"__r{name}__", lambda self, x: dispatch(x, self)
+        )  # __r*__ 代表 other在操作符前, self在操作符后
+
+
+def _register_ops(namespace):
+    for name, cls in inspect.getmembers(namespace, inspect.isclass):
+        if name[0] != "_" and name != 'Tensor':
+            # 注册所有_Function的子类
+            register(name.lower(), cls)
+
+
+try:
+    _register_ops(importlib.import_module("core.ops"))
+except ImportError as e:
+    print(e)
+
+
 
