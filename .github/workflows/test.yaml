@@ -27,6 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
+          pip install pytest
           pip install -r requirements.txt
       - name: Run unit tests # 跑测试
         run: |
