@@ -105,4 +105,4 @@ class Mul(_Function):
     def backward(ctx, grad: Any) -> Any:
         x, y = ctx.saved_tensors
         # 分别返回∂L/∂x 和 ∂L/∂y
-        return grad * y, grad * x
+        return unbroadcast(grad * y, x.shape), unbroadcast(grad * x, y.shape)
