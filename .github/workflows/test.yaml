@@ -1,0 +1,32 @@
+name: Unit Test Pipeline
+
+# 当在这些分支上提交时，执行这个workflow
+on:
+  push:
+    branches:
+      - '!master'   # 排除master，在其他分支提交代码时，需要进行测试
+
+# 一个workflow由一个或多个job组成
+jobs:
+  # 此workflow包含一个job，叫作test
+  test:
+    # 会在github提供的ubuntu系统上运行测试代码
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.8, 3.9] # 同时在这两个版本的python上测试
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # 首先下载代码
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }} # 指定python版本
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run unit tests # 跑测试
+        run: |
+          python3 -m pytest
