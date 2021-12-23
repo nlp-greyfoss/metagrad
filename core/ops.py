@@ -1,4 +1,5 @@
 from typing import Any, Tuple
+
 import numpy as np
 
 from core.tensor import Tensor
@@ -30,7 +31,7 @@ class _Function:
         '''前向传播，进行真正运算的地方'''
         raise NotImplementedError("You must implement the forward function for custom Function.")
 
-    def backward(ctx, grad: Any) -> Any:
+    def backward(ctx, grad: np.ndarray) -> np.ndarray:
         '''实现反向传播，计算梯度'''
         raise NotImplementedError("You must implement the backward method for your custom Function "
                                   "to use it with backward mode AD.")
@@ -86,10 +87,24 @@ class Add(_Function):
         # 进行真正的运算
         return x + y
 
-    def backward(ctx, grad: Any) -> Any:
+    def backward(ctx, grad: np.ndarray) -> np.ndarray:
         shape_x, shape_y = ctx.saved_tensors
         # 输入有两个，都是需要计算梯度的，因此输出也是两个
         return unbroadcast(grad, shape_x), unbroadcast(grad, shape_y)
+
+
+class Sub(_Function):
+    def forward(ctx, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        '''
+        实现 z = x - y
+        '''
+        ctx.save_for_backward(x.shape, y.shape)
+        return x - y
+
+    def backward(ctx, grad: np.ndarray) -> np.ndarray:
+        print(type(grad))
+        shape_x, shape_y = ctx.saved_tensors
+        return unbroadcast(grad, shape_x), unbroadcast(-grad, shape_y)
 
 
 class Mul(_Function):
@@ -102,7 +117,21 @@ class Mul(_Function):
         ctx.save_for_backward(x, y)
         return x * y
 
-    def backward(ctx, grad: Any) -> Any:
+    def backward(ctx, grad: np.ndarray) -> np.ndarray:
         x, y = ctx.saved_tensors
         # 分别返回∂L/∂x 和 ∂L/∂y
         return unbroadcast(grad * y, x.shape), unbroadcast(grad * x, y.shape)
+
+
+class Div(_Function):
+
+    def forward(ctx, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        '''
+        实现 z = x / y
+        '''
+        ctx.save_for_backward(x, y)
+        return x / y
+
+    def backward(ctx, grad: np.ndarray) -> np.ndarray:
+        x, y = ctx.saved_tensors
+        return unbroadcast(grad / y, x.shape), unbroadcast(grad * (-x / y ** 2), x.shape)
