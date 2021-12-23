@@ -28,8 +28,8 @@ def test_array_mul():
 
     z.backward(Tensor([1, 1, 1]))
 
-    assert x.grad._data.tolist() == y.data.tolist()
-    assert y.grad._data.tolist() == x.data.tolist()
+    assert x.grad.data.tolist() == y.data.tolist()
+    assert y.grad.data.tolist() == x.data.tolist()
 
     x *= 0.1
     assert x.grad is None

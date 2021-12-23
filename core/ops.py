@@ -88,7 +88,7 @@ class Add(_Function):
         # 进行真正的运算
         return x + y
 
-    def backward(ctx, grad: ndarray) -> tuple[ndarray, ndarray]:
+    def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
         shape_x, shape_y = ctx.saved_tensors
         # 输入有两个，都是需要计算梯度的，因此输出也是两个
         return unbroadcast(grad, shape_x), unbroadcast(grad, shape_y)
@@ -102,7 +102,7 @@ class Sub(_Function):
         ctx.save_for_backward(x.shape, y.shape)
         return x - y
 
-    def backward(ctx, grad: ndarray) -> tuple[ndarray, ndarray]:
+    def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
         print(type(grad))
         shape_x, shape_y = ctx.saved_tensors
         return unbroadcast(grad, shape_x), unbroadcast(-grad, shape_y)
@@ -118,13 +118,14 @@ class Mul(_Function):
         ctx.save_for_backward(x, y)
         return x * y
 
-    def backward(ctx, grad: ndarray) -> tuple[ndarray, ndarray]:
+    def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
         x, y = ctx.saved_tensors
         # 分别返回∂L/∂x 和 ∂L/∂y
         return unbroadcast(grad * y, x.shape), unbroadcast(grad * x, y.shape)
 
 
-class Div(_Function):
+# Python3 只有 __truediv__ 相关魔法方法
+class TrueDiv(_Function):
 
     def forward(ctx, x: ndarray, y: ndarray) -> ndarray:
         '''
@@ -133,7 +134,6 @@ class Div(_Function):
         ctx.save_for_backward(x, y)
         return x / y
 
-    def backward(ctx, grad: ndarray) -> tuple[ndarray, ndarray]:
+    def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
         x, y = ctx.saved_tensors
-        return unbroadcast(grad / y, x.shape), unbroadcast(grad * (-x / y ** 2), x.shape),
-
+        return unbroadcast(grad / y, x.shape), unbroadcast(grad * (-x / y ** 2), y.shape),

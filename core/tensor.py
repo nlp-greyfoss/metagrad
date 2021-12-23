@@ -2,7 +2,6 @@ import importlib
 import inspect
 from typing import Union, Tuple
 
-
 import numpy as np
 
 # 默认数据类型
@@ -194,7 +193,6 @@ class Tensor:
 
 
 def register(name, fxn):
-
     def dispatch(*xs, **kwargs):
         # 把所有的输入都转换为Tensor
         xs = [ensure_tensor(x) for x in xs]
@@ -205,7 +203,7 @@ def register(name, fxn):
     setattr(Tensor, name, dispatch)
 
     # 这几个方法都有__xx__, __ixx__, __rxx__ 魔法方法
-    if name in ["add", "sub", "mul", "matmul"]:
+    if name in ["add", "sub", "mul", "truediv", "matmul"]:
         setattr(Tensor, f"__{name}__", dispatch)
         setattr(
             Tensor, f"__i{name}__", lambda self, x: self.assign(dispatch(self, x))
@@ -213,6 +211,9 @@ def register(name, fxn):
         setattr(
             Tensor, f"__r{name}__", lambda self, x: dispatch(x, self)
         )  # __r*__ 代表 other在操作符前, self在操作符后
+
+    # if name == 'div':
+    #    setattr(Tensor, f"__truediv__", dispatch) # Python3 没有__div__
 
 
 def _register_ops(namespace):
@@ -226,6 +227,3 @@ try:
     _register_ops(importlib.import_module("core.ops"))
 except ImportError as e:
     print(e)
-
-
-
