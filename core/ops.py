@@ -147,7 +147,22 @@ class Sum(_Function):
         ctx.save_for_backward(x.shape)
         return x.sum(axis, keepdims=keepdims)
 
-    def backward(ctx, grad: ndarray) -> np.ndarray:
+    def backward(ctx, grad: ndarray) -> ndarray:
         x_shape, = ctx.saved_tensors
         # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
         return np.broadcast_to(grad, x_shape)
+
+
+# ****矩阵运算****
+class Matmul(_Function):
+    def forward(ctx, x: ndarray, y: ndarray) -> ndarray:
+        '''
+        z = x @ y
+        '''
+        assert x.ndim > 1 and y.ndim > 1, f"the dim number of x or y must >=2, actual x:{x.ndim}  and y:{y.ndim}"
+        ctx.save_for_backward(x, y)
+        return x @ y
+
+    def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
+        x, y = ctx.saved_tensors
+        return unbroadcast(grad @ y.swapaxes(-2, -1), x.shape), unbroadcast(x.swapaxes(-2, -1) @ grad, y.shape)
