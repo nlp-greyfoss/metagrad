@@ -212,9 +212,6 @@ def register(name, fxn):
             Tensor, f"__r{name}__", lambda self, x: dispatch(x, self)
         )  # __r*__ 代表 other在操作符前, self在操作符后
 
-    # if name == 'div':
-    #    setattr(Tensor, f"__truediv__", dispatch) # Python3 没有__div__
-
 
 def _register_ops(namespace):
     for name, cls in inspect.getmembers(namespace, inspect.isclass):

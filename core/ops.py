@@ -76,6 +76,7 @@ def unbroadcast(grad: ndarray, in_shape: Tuple) -> ndarray:
     return grad
 
 
+# ****二元运算****
 class Add(_Function):
 
     def forward(ctx, x: ndarray, y: ndarray) -> ndarray:
@@ -137,3 +138,16 @@ class TrueDiv(_Function):
     def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
         x, y = ctx.saved_tensors
         return unbroadcast(grad / y, x.shape), unbroadcast(grad * (-x / y ** 2), y.shape),
+
+
+# ****聚合运算****
+class Sum(_Function):
+
+    def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
+        ctx.save_for_backward(x.shape)
+        return x.sum(axis, keepdims=keepdims)
+
+    def backward(ctx, grad: ndarray) -> np.ndarray:
+        x_shape, = ctx.saved_tensors
+        # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
+        return np.broadcast_to(grad, x_shape)
