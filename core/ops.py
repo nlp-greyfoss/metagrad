@@ -189,3 +189,13 @@ class Log(_Function):
     def backward(ctx, grad: ndarray) -> ndarray:
         x, = ctx.saved_tensors
         return grad / x
+
+
+class Exp(_Function):
+    def forward(ctx, x: ndarray) -> ndarray:
+        ctx.save_for_backward(x)
+        return np.exp(x)
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        x, = ctx.saved_tensors
+        return np.exp(x)
