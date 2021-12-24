@@ -199,8 +199,11 @@ def register(name, fxn):
         # 调用apply方法
         return fxn.apply(fxn, *xs, **kwargs)
 
-    # 为Tensor添加属性，名为name，值为dispatch函数引用
-    setattr(Tensor, name, dispatch)
+    if name in ["pow"]:
+        setattr(Tensor, f"__{name}__", dispatch)
+    else:
+        # 为Tensor添加属性，名为name，值为dispatch函数引用
+        setattr(Tensor, name, dispatch)
 
     # 这几个方法都有__xx__, __ixx__, __rxx__ 魔法方法
     if name in ["add", "sub", "mul", "truediv", "matmul"]:

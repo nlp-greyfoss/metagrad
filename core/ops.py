@@ -1,7 +1,7 @@
 from typing import Any, Tuple
-from numpy import ndarray
 
 import numpy as np
+from numpy import ndarray
 
 from core.tensor import Tensor
 
@@ -166,3 +166,15 @@ class Matmul(_Function):
     def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
         x, y = ctx.saved_tensors
         return unbroadcast(grad @ y.swapaxes(-2, -1), x.shape), unbroadcast(x.swapaxes(-2, -1) @ grad, y.shape)
+
+
+# ****一元运算****
+class Pow(_Function):
+    def forward(ctx, x: ndarray, c: ndarray) -> ndarray:
+        print(x, c)
+        ctx.save_for_backward(x, c)
+        return np.power(x, c)
+
+    def backward(ctx, grad: ndarray) -> Any:
+        x, c = ctx.saved_tensors
+        return grad * c * np.power(x, c-1)
