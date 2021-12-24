@@ -199,7 +199,7 @@ def register(name, fxn):
         # 调用apply方法
         return fxn.apply(fxn, *xs, **kwargs)
 
-    if name in ["pow"]:
+    if name in ["pow", "neg"]:
         setattr(Tensor, f"__{name}__", dispatch)
     else:
         # 为Tensor添加属性，名为name，值为dispatch函数引用

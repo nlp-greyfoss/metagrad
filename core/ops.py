@@ -199,3 +199,11 @@ class Exp(_Function):
     def backward(ctx, grad: ndarray) -> ndarray:
         x, = ctx.saved_tensors
         return np.exp(x)
+
+
+class Neg(_Function):
+    def forward(ctx, x: ndarray) -> ndarray:
+        return -x
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        return -grad
