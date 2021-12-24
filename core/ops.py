@@ -171,10 +171,10 @@ class Matmul(_Function):
 # ****一元运算****
 class Pow(_Function):
     def forward(ctx, x: ndarray, c: ndarray) -> ndarray:
-        print(x, c)
         ctx.save_for_backward(x, c)
-        return np.power(x, c)
+        return x ** c
 
-    def backward(ctx, grad: ndarray) -> Any:
+    def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
         x, c = ctx.saved_tensors
-        return grad * c * np.power(x, c-1)
+        # 把c当成一个常量，不需要计算梯度
+        return grad * c * x ** (c - 1), None
