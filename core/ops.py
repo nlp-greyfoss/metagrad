@@ -142,7 +142,6 @@ class TrueDiv(_Function):
 
 # ****聚合运算****
 class Sum(_Function):
-
     def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
         ctx.save_for_backward(x.shape)
         return x.sum(axis, keepdims=keepdims)
@@ -151,6 +150,19 @@ class Sum(_Function):
         x_shape, = ctx.saved_tensors
         # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
         return np.broadcast_to(grad, x_shape)
+
+
+class Max(_Function):
+    def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
+        ret = np.amax(x, axis=axis, keepdims=keepdims)
+        ctx.save_for_backward(x, axis, ret, keepdims)
+        return ret
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        x, axis, ret, keepdims = ctx.saved_tensors
+        mask = (x == ret)
+        div = mask.sum(axis=axis, keepdims=keepdims)
+        return mask * grad / div
 
 
 # ****矩阵运算****
