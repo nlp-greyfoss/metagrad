@@ -174,7 +174,18 @@ class Pow(_Function):
         ctx.save_for_backward(x, c)
         return x ** c
 
-    def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
+    def backward(ctx, grad: ndarray) -> Tuple[ndarray, None]:
         x, c = ctx.saved_tensors
         # 把c当成一个常量，不需要计算梯度
         return grad * c * x ** (c - 1), None
+
+
+class Log(_Function):
+    def forward(ctx, x: ndarray) -> ndarray:
+        ctx.save_for_backward(x)
+        # log = ln
+        return np.log(x)
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        x, = ctx.saved_tensors
+        return grad / x
