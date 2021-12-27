@@ -219,3 +219,24 @@ class Neg(_Function):
 
     def backward(ctx, grad: ndarray) -> ndarray:
         return -grad
+
+
+# ****变形和切片****
+class Slice(_Function):
+    def forward(ctx, x: ndarray, idxs: slice) -> ndarray:
+        '''
+        z = x[idxs]
+        '''
+        # 如果传入[1:3]，变成切片slice
+        # 如果idxs传入单个索引，会被看成是整数，所以这里转换回来
+        if isinstance(idxs, ndarray):
+            idxs = int(idxs.item())
+        ctx.save_for_backward(x.shape, idxs)
+        return x[idxs]
+
+    def backward(ctx, grad) -> Tuple[ndarray, None]:
+        x_shape, idxs = ctx.saved_tensors
+        bigger_grad = np.zeros(x_shape, dtype=grad.dtype)
+        bigger_grad[idxs] = grad
+
+        return bigger_grad, None

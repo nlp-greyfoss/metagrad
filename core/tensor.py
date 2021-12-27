@@ -16,8 +16,8 @@ def ensure_array(arrayable: Arrayable) -> np.ndarray:
     :param arrayable:
     :return:
     """
-    if isinstance(arrayable, np.ndarray):
-        # 如果本身是ndarray
+    if isinstance(arrayable, (np.ndarray, slice, tuple)):
+        # 如果本身是ndarray或slice或tuple(元组里面都是slice)
         return arrayable
     # 转换为Numpy数组
     return np.array(arrayable, dtype=_type)
@@ -120,6 +120,10 @@ class Tensor:
     def numpy(self) -> np.ndarray:
         """转换为Numpy数组"""
         return self.data
+
+    # 切片操作
+    def __getitem__(self, idxs):
+        return self.slice(idxs)
 
     """
      backward函数现在应该从当前节点(Tensor)回溯到所有依赖节点(depends_on)，计算路径上的偏导
