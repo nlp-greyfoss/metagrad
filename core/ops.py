@@ -240,3 +240,13 @@ class Slice(_Function):
         bigger_grad[idxs] = grad
 
         return bigger_grad, None
+
+
+class Reshape(_Function):
+    def forward(ctx, x: ndarray, shape: Tuple) -> ndarray:
+        ctx.save_for_backward(x.shape)
+        return x.reshape(shape)
+
+    def backward(ctx, grad: ndarray) -> Tuple[ndarray, None]:
+        x_shape, = ctx.saved_tensors
+        return grad.reshape(x_shape), None
