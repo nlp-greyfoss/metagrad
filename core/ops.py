@@ -1,4 +1,4 @@
-from typing import Any, Tuple
+from typing import Any, Tuple, Optional
 
 import numpy as np
 from numpy import ndarray
@@ -250,3 +250,15 @@ class Reshape(_Function):
     def backward(ctx, grad: ndarray) -> Tuple[ndarray, None]:
         x_shape, = ctx.saved_tensors
         return grad.reshape(x_shape), None
+
+
+class Transpose(_Function):
+    def forward(ctx, x: ndarray, axes: Optional[Tuple] = None) -> ndarray:
+        ctx.save_for_backward(axes)
+        return x.transpose(axes)
+
+    def backward(ctx, grad: ndarray) -> Any:
+        axes, = ctx.saved_tensors
+        if axes is None:
+            return grad.transpose()
+        return grad.transpose(tuple(np.argsort(axes)))
