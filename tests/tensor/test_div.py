@@ -3,9 +3,9 @@ import numpy as np
 from core.tensor import Tensor
 
 
-def test_simple_mul():
+def test_simple_div():
     '''
-    测试简单的乘法
+    测试简单的除法
     '''
     x = Tensor(1, requires_grad=True)
     y = Tensor(2, requires_grad=True)

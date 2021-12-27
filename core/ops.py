@@ -137,7 +137,7 @@ class TrueDiv(_Function):
 
     def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
         x, y = ctx.saved_tensors
-        return unbroadcast(grad / y, x.shape), unbroadcast(grad * (-x / y ** 2), y.shape),
+        return unbroadcast(grad / y, x.shape), unbroadcast(grad * (-x / y ** 2), y.shape)
 
 
 # ****聚合运算****
