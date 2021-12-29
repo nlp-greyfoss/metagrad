@@ -195,6 +195,15 @@ class Tensor:
                     gt = Tensor(g)
                     t._grad = gt if t.grad is None else t.grad + gt
 
+    # ****帮助函数****
+    @classmethod
+    def empty(cls, *shape, **kwargs):
+        return cls(np.empty(shape, dtype=_type), **kwargs)
+
+    @classmethod
+    def zeros(cls, *shape, **kwargs):
+        return cls(np.zeros(shape, dtype=_type), **kwargs)
+
 
 def register(name, fxn):
     def dispatch(*xs, **kwargs):
