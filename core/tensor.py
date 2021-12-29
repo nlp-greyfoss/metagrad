@@ -198,7 +198,7 @@ class Tensor:
     # ****帮助函数****
     @classmethod
     def empty(cls, *shape, **kwargs):
-        return cls(np.empty(shape, dtype=_type), **kwargs)
+        return cls(np.empty(*shape, dtype=_type), **kwargs)
 
     @classmethod
     def zeros(cls, *shape, **kwargs):

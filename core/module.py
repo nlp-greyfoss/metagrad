@@ -61,11 +61,27 @@ class Linear(Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        self.weight.assign(np.random.randn((self.out_features, self.in_features)))
+        self.weight.assign(np.random.randn(self.out_features, self.in_features))
 
     def forward(self, input_: Tensor) -> Tensor:
-        x = input_ @ self.weight.T
+        x = input_ @ self.weight.transpose()
         if self.bias is not None:
             x = x + self.bias
 
         return x
+
+
+if __name__ == '__main__':
+    model = Linear(2, 1)
+    X = [
+        [64.4, 31], [68, 21], [74.1, 19], [74.8, 24], [76.9, 17], [78.1, 16], [78.6, 17]
+    ]
+    price = [[6.1, 6.25, 7.8, 6.66, 7.82, 7.14, 8.02]]
+
+    X = Tensor(X)
+    y = Tensor(price)
+
+    hat_y = model.forward(X)
+    errors = (hat_y - y) ** 2
+    errors = errors.sum() / len(errors)
+    print(errors)
