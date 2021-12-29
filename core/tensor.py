@@ -2,7 +2,6 @@ import importlib
 import inspect
 from typing import Union, Tuple
 
-
 import numpy as np
 
 # 默认数据类型
@@ -17,8 +16,8 @@ def ensure_array(arrayable: Arrayable) -> np.ndarray:
     :param arrayable:
     :return:
     """
-    if isinstance(arrayable, np.ndarray):
-        # 如果本身是ndarray
+    if isinstance(arrayable, (np.ndarray, slice, tuple)):
+        # 如果本身是ndarray或slice或tuple(元组里面都是slice)
         return arrayable
     # 转换为Numpy数组
     return np.array(arrayable, dtype=_type)
@@ -122,6 +121,14 @@ class Tensor:
         """转换为Numpy数组"""
         return self.data
 
+    # 切片操作
+    def __getitem__(self, idxs) -> "Tensor":
+        return self.slice(idxs)
+
+    @property
+    def T(self) -> "Tensor":
+        return self.transpose(axes=None)
+
     """
      backward函数现在应该从当前节点(Tensor)回溯到所有依赖节点(depends_on)，计算路径上的偏导
         # 我们分为两部分
@@ -194,18 +201,20 @@ class Tensor:
 
 
 def register(name, fxn):
-
     def dispatch(*xs, **kwargs):
         # 把所有的输入都转换为Tensor
         xs = [ensure_tensor(x) for x in xs]
         # 调用apply方法
         return fxn.apply(fxn, *xs, **kwargs)
 
-    # 为Tensor添加属性，名为name，值为dispatch函数引用
-    setattr(Tensor, name, dispatch)
+    if name in ["pow", "neg"]:
+        setattr(Tensor, f"__{name}__", dispatch)
+    else:
+        # 为Tensor添加属性，名为name，值为dispatch函数引用
+        setattr(Tensor, name, dispatch)
 
     # 这几个方法都有__xx__, __ixx__, __rxx__ 魔法方法
-    if name in ["add", "sub", "mul", "matmul"]:
+    if name in ["add", "sub", "mul", "truediv", "matmul"]:
         setattr(Tensor, f"__{name}__", dispatch)
         setattr(
             Tensor, f"__i{name}__", lambda self, x: self.assign(dispatch(self, x))
@@ -226,6 +235,3 @@ try:
     _register_ops(importlib.import_module("core.ops"))
 except ImportError as e:
     print(e)
-
-
-
