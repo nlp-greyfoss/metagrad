@@ -104,7 +104,6 @@ class Sub(_Function):
         return x - y
 
     def backward(ctx, grad: ndarray) -> Tuple[ndarray, ndarray]:
-        print(type(grad))
         shape_x, shape_y = ctx.saved_tensors
         return unbroadcast(grad, shape_x), unbroadcast(-grad, shape_y)
 
