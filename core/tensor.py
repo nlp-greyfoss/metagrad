@@ -122,8 +122,12 @@ class Tensor:
         return self.data
 
     # 切片操作
-    def __getitem__(self, idxs):
+    def __getitem__(self, idxs) -> "Tensor":
         return self.slice(idxs)
+
+    @property
+    def T(self) -> "Tensor":
+        return self.transpose(axes=None)
 
     """
      backward函数现在应该从当前节点(Tensor)回溯到所有依赖节点(depends_on)，计算路径上的偏导
