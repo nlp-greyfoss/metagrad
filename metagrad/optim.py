@@ -1,6 +1,6 @@
 from typing import List
 
-from core.paramater import Parameter
+from metagrad.paramater import Parameter
 
 
 class Optimizer:

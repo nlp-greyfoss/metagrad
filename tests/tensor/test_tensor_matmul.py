@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from core.tensor import Tensor
+from metagrad.tensor import Tensor
 from torch import tensor
 
 

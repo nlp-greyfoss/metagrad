@@ -1,5 +1,5 @@
-from core.module import Module
-from core.tensor import Tensor
+from metagrad.module import Module
+from metagrad.tensor import Tensor
 
 
 class _Loss(Module):
