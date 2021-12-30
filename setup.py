@@ -12,7 +12,7 @@ setup(name='metagrad',
       license='MIT',
       long_description=long_description,
       long_description_content_type='text/markdown',
-      packages=['metagrad'],
+      packages=find_packages(exclude=["test", "test.*"])
       classifiers=[
           "Programming Language :: Python :: 3",
           "License :: OSI Approved :: MIT License"
