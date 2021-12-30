@@ -241,6 +241,6 @@ def _register_ops(namespace):
 
 
 try:
-    _register_ops(importlib.import_module("core.ops"))
+    _register_ops(importlib.import_module("metagrad.ops"))
 except ImportError as e:
     print(e)

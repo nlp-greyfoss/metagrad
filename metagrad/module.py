@@ -3,8 +3,8 @@ from typing import List
 
 import numpy as np
 
-from core.paramater import Parameter
-from core.tensor import Tensor
+from metagrad.paramater import Parameter
+from metagrad.tensor import Tensor
 
 
 class Module:

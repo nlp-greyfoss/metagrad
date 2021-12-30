@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from core.tensor import Tensor
+from metagrad.tensor import Tensor
 
 
 def test_simple_log():

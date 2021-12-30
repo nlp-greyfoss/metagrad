@@ -1,4 +1,4 @@
-from core.tensor import Tensor
+from metagrad.tensor import Tensor
 import numpy as np
 
 

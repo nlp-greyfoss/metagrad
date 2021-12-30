@@ -1,4 +1,4 @@
-from core.tensor import Tensor
+from metagrad.tensor import Tensor
 
 
 def test_simple_pow():

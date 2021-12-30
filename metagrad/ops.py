@@ -3,7 +3,7 @@ from typing import Any, Tuple
 import numpy as np
 from numpy import ndarray
 
-from core.tensor import Tensor
+from metagrad.tensor import Tensor
 
 '''
 ops.py保存所有运算操作相关的类

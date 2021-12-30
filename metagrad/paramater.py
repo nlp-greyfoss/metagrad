@@ -1,6 +1,6 @@
 from typing import Union
 
-from core.tensor import Tensor, Arrayable
+from metagrad.tensor import Tensor, Arrayable
 
 
 class Parameter(Tensor):
