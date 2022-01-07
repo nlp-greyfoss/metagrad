@@ -1,6 +1,6 @@
 import importlib
 import inspect
-from typing import Union, Tuple
+from typing import Union, Tuple, Any
 
 import numpy as np
 
@@ -120,6 +120,10 @@ class Tensor:
     def numpy(self) -> np.ndarray:
         """转换为Numpy数组"""
         return self.data
+
+    def item(self) -> Any:
+        return self.numpy().item()
+
 
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
