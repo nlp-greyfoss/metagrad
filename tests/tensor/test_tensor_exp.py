@@ -14,6 +14,15 @@ def test_simple_exp():
     np.testing.assert_array_almost_equal(x.grad.data, np.exp(2))
 
 
+def test_exp():
+    x = Tensor(-2, requires_grad=True)
+    z = x.exp()
+
+    z.backward(2)
+
+    np.testing.assert_array_almost_equal(x.grad.data, 2 * np.exp(-2))
+
+
 def test_array_exp():
     x = Tensor([1, 2, 3], requires_grad=True)
     z = x.exp()
