@@ -1,4 +1,5 @@
 import inspect
+import math
 from typing import List
 
 import numpy as np
@@ -61,7 +62,7 @@ class Linear(Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        self.weight.assign(np.random.randn(self.out_features, self.in_features))
+        self.weight.assign(np.random.randn(self.out_features, self.in_features) / math.sqrt(self.in_features))
 
     def forward(self, input: Tensor) -> Tensor:
         x = input @ self.weight.T
