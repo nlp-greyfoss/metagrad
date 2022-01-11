@@ -1,13 +1,13 @@
+import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
+import pandas as pd
+from tqdm import tqdm
 
 import metagrad.functions as F
 from metagrad.loss import BCELoss
 from metagrad.module import Module, Linear
 from metagrad.optim import SGD
 from metagrad.tensor import Tensor
-from tqdm import tqdm
 
 
 class LogisticRegression(Module):
@@ -18,44 +18,36 @@ class LogisticRegression(Module):
         return F.sigmoid(self.linear(x))
 
 
-def model_plot(model, X, y, title):
-    import matplotlib.pyplot as plt
+def load_data(path, draw_picture=False):
+    data = pd.read_csv(path)
 
-    w = model.linear.weight
-    b = model.linear.bias
+    X = data.iloc[:, :-1]
+    y = data.iloc[:, -1]
 
-    plt.scatter(X[:, 0], X[:, 1], c=y, cmap='jet')
+    if draw_picture:
+        # filter out the applicants that got admitted
+        admitted = data.loc[y == 1]
 
-    u = np.linspace(X[:, 0].min(), X[:, 0].max(), 2)
-    plt.plot(u, (0.5 - b - w[0] * u) / w[1])
-    plt.xlim(X[:, 0].min() - 0.5, X[:, 0].max() + 0.5)
-    plt.ylim(X[:, 1].min() - 0.5, X[:, 1].max() + 0.5)
-    plt.xlabel(r'$\boldsymbol{x_1}$', fontsize=16)
-    plt.ylabel(r'$\boldsymbol{x_2}$', fontsize=16)
-    plt.title(title)
-    plt.show()
+        # filter out the applicants that din't get admission
+        not_admitted = data.loc[y == 0]
 
+        # plots
+        plt.scatter(admitted.iloc[:, 0], admitted.iloc[:, 1], s=10, label='Admitted')
+        plt.scatter(not_admitted.iloc[:, 0], not_admitted.iloc[:, 1], s=10, label='Not Admitted')
+        plt.xlabel('Marks in 1st Exam')
+        plt.ylabel('Marks in 2nd Exam')
+        plt.legend()
+        fig = plt.gcf()
+        fig.savefig('marks.png', dpi=100)
 
-def load_dataset():
-    samples = make_classification(n_samples=1000, n_features=2, n_redundant=0, n_informative=1,
-                                  n_clusters_per_class=1, flip_y=-1)
-    red = samples[0][samples[1] == 0]
-    blue = samples[0][samples[1] == 1]
-    red_labels = np.zeros(len(red))
-    blue_labels = np.ones(len(blue))
+    y = y[:, np.newaxis]
 
-    labels = np.append(red_labels, blue_labels)
-    inputs = np.concatenate((red, blue), axis=0)
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        inputs, labels, test_size=0.33, random_state=42)
-
-    return Tensor(X_train), Tensor(X_test), Tensor(y_train.reshape(-1, 1)), Tensor(y_test.reshape(-1, 1))
+    return Tensor(X), Tensor(y)
 
 
 if __name__ == '__main__':
 
-    X_train, X_test, y_train, y_test = load_dataset()
+    X, y = load_data("./data/marks.txt", draw_picture=True)
 
     epochs = 200000
 
@@ -69,11 +61,9 @@ if __name__ == '__main__':
 
     for epoch in tqdm(range(int(epochs))):
 
-        x = X_train
-        labels = y_train
         optimizer.zero_grad()
-        outputs = model(X_train)
-        l = loss(outputs, labels)
+        outputs = model(X)
+        l = loss(outputs, y)
         optimizer.zero_grad()
         l.backward()
         optimizer.step()
@@ -81,9 +71,25 @@ if __name__ == '__main__':
         if (epoch + 1) % 10000 == 0:
             total = 0
             correct = 0
-            total += len(y_train)
-            correct += np.sum(outputs.numpy().round() == y_train.numpy())
+            total += len(y)
+            correct += np.sum(outputs.numpy().round() == y.numpy())
             accuracy = 100 * correct / total
             losses.append(l.item())
 
             print(f"Train -  Loss: {l.item()}. Accuracy: {accuracy}\n")
+
+    weight = model.linear.weight.squeeze()
+    bias = model.linear.bias.squeeze()
+
+    print(weight, bias)
+
+    X_numpy = X.numpy()
+    x_values = [np.min(X_numpy[:, 0] - 2), np.max(X_numpy[:, 1] + 2)]
+    y_values = - (bias + np.dot(weight[0], x_values)) / weight[1]
+
+    plt.plot(x_values, y_values, label='Decision Boundary')
+    plt.xlabel('Marks in 1st Exam')
+    plt.ylabel('Marks in 2nd Exam')
+    plt.legend()
+    fig = plt.gcf()
+    fig.savefig('marks_decision.png')

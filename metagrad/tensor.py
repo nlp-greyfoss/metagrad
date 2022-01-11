@@ -124,6 +124,8 @@ class Tensor:
     def item(self) -> Any:
         return self.numpy().item()
 
+    def squeeze(self) -> Any:
+        return self.numpy().squeeze()
 
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
