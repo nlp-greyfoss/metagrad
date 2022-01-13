@@ -5,6 +5,11 @@ def sigmoid(x: Tensor) -> Tensor:
     return 1 / (1 + (-x).exp())
 
 
+def softmax(x, axis=-1):
+    y = x.exp()
+    return y / y.sum(axis=axis, keepdims=True)
+
+
 def binary_cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
     errors = -(target * input.log() + (1 - target) * (1 - input).log())
 
