@@ -38,3 +38,11 @@ class BCELoss(_Loss):
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return F.binary_cross_entropy(input, target, self.reduction)
+
+
+class CrossEntropyLoss(_Loss):
+    def __init__(self, reduction: str = "mean") -> None:
+        super().__init__(reduction)
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return F.cross_entropy(input, target, self.reduction)
