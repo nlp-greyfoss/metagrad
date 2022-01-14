@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn import datasets
+from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from metagrad.loss import CrossEntropyLoss
@@ -20,8 +21,11 @@ class SoftmaxRegression(Module):
 
 def generate_dataset(draw_picture=False):
     iris = datasets.load_iris()
-    X = iris.data[:, :2]  # 我们只需要前两个特征
-    y = iris.target
+
+    X = iris['data']
+    y = iris['target']
+    names = iris['target_names']  # 类名
+    feature_names = iris['feature_names']  # 特征名
 
     if draw_picture:
         x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5
@@ -30,44 +34,56 @@ def generate_dataset(draw_picture=False):
         plt.figure(2, figsize=(8, 6))
         plt.clf()
 
-        # Plot the training points
-        plt.scatter(X[:, 0], X[:, 1], c=y, cmap=plt.cm.Paired, edgecolor="k")
-        plt.xlabel("Sepal length")
-        plt.ylabel("Sepal width")
-
+        for target, target_name in enumerate(names):
+            X_plot = X[y == target]
+            plt.plot(X_plot[:, 0], X_plot[:, 1],
+                     linestyle='none',
+                     marker='o',
+                     label=target_name)
+        plt.xlabel(feature_names[0])
+        plt.ylabel(feature_names[1])
         plt.xlim(x_min, x_max)
         plt.ylim(y_min, y_max)
-        plt.xticks(())
-        plt.yticks(())
+
+        plt.axis('equal')
+        plt.legend()
 
         fig = plt.gcf()
         fig.savefig('iris.png', dpi=100)
 
     y = np.eye(3)[y]
-    return Tensor(X), Tensor(y)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=2)
+
+    return Tensor(X_train), Tensor(X_test), Tensor(y_train), Tensor(y_test)
 
 
 if __name__ == '__main__':
-    X, y = generate_dataset(True)
-    epochs = 5000
+    X_train, X_test, y_train, y_test = generate_dataset(True)
+    epochs = 2000
 
-    model = SoftmaxRegression(2, 3)  # 2个特征 3个输出
+    model = SoftmaxRegression(4, 3)  # 4个特征 3个输出
 
-    optimizer = SGD(model.parameters(), lr=1e-9)
+    optimizer = SGD(model.parameters(), lr=1)
 
     loss = CrossEntropyLoss()
 
     losses = []
 
-    for epoch in tqdm(range(int(epochs))):
-
-        optimizer.zero_grad()
-        outputs = model(X)
-        l = loss(outputs, y)
+    for epoch in range(int(epochs)):
+        outputs = model(X_train)
+        l = loss(outputs, y_train)
         optimizer.zero_grad()
         l.backward()
         optimizer.step()
 
-        if (epoch + 1) % 500 == 0:
+        if (epoch + 1) % 20 == 0:
             losses.append(l.item())
             print(f"Train -  Loss: {l.item()}")
+
+    # 在测试集上测试
+    outputs = model(X_test)
+    correct = np.sum(outputs.numpy().argmax(-1) == y_test.numpy().argmax(-1))
+    accuracy = 100 * correct / len(y_test)
+    print(f"Test Accuracy:{accuracy}")

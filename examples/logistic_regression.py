@@ -60,8 +60,6 @@ if __name__ == '__main__':
     losses = []
 
     for epoch in tqdm(range(int(epochs))):
-
-        optimizer.zero_grad()
         outputs = model(X)
         l = loss(outputs, y)
         optimizer.zero_grad()
