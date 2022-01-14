@@ -1,5 +1,6 @@
 from metagrad.module import Module
 from metagrad.tensor import Tensor
+from metagrad import functions as F
 
 
 class _Loss(Module):
@@ -29,3 +30,19 @@ class MSELoss(_Loss):
             loss = errors
 
         return loss
+
+
+class BCELoss(_Loss):
+    def __init__(self, reduction: str = "mean") -> None:
+        super().__init__(reduction)
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return F.binary_cross_entropy(input, target, self.reduction)
+
+
+class CrossEntropyLoss(_Loss):
+    def __init__(self, reduction: str = "mean") -> None:
+        super().__init__(reduction)
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        return F.cross_entropy(input, target, self.reduction)
