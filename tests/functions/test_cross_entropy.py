@@ -10,7 +10,7 @@ def test_cross_entropy():
     t = np.array([3, 0]).astype(np.int32)
 
     mx = Tensor(x, requires_grad=True)
-    mt = Tensor(t)
+    mt = Tensor(np.eye(x.shape[-1])[t]) # 需要转换成one-hot向量
 
     tx = torch.tensor(x, dtype=torch.float32, requires_grad=True)
     tt = torch.tensor(t, dtype=torch.int64)

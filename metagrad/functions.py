@@ -1,3 +1,5 @@
+import numpy as np
+
 from metagrad.tensor import Tensor
 
 
@@ -29,7 +31,7 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
 
     p = softmax(input)
 
-    errors = - target * p.log() / N
+    errors = - target * p.log()
     # errors = - p[np.arange(N), target.data].log()
 
     if reduction == "mean":
@@ -39,4 +41,3 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     else:
         loss = errors
     return loss
-

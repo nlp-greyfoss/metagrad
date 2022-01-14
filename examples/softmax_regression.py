@@ -65,7 +65,7 @@ if __name__ == '__main__':
 
     model = SoftmaxRegression(4, 3)  # 4个特征 3个输出
 
-    optimizer = SGD(model.parameters(), lr=1)
+    optimizer = SGD(model.parameters(), lr=1e-1)
 
     loss = CrossEntropyLoss()
 
