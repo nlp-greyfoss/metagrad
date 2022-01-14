@@ -4,7 +4,6 @@ from sklearn import datasets
 from tqdm import tqdm
 
 from metagrad.loss import CrossEntropyLoss
-
 from metagrad.module import Module, Linear
 from metagrad.optim import SGD
 from metagrad.tensor import Tensor
@@ -44,18 +43,17 @@ def generate_dataset(draw_picture=False):
         fig = plt.gcf()
         fig.savefig('iris.png', dpi=100)
 
-    y = y[:, np.newaxis]
+    y = np.eye(3)[y]
     return Tensor(X), Tensor(y)
 
 
 if __name__ == '__main__':
     X, y = generate_dataset(True)
-
-    epochs = 200_000
+    epochs = 5000
 
     model = SoftmaxRegression(2, 3)  # 2个特征 3个输出
 
-    optimizer = SGD(model.parameters(), lr=1e-3)
+    optimizer = SGD(model.parameters(), lr=1e-9)
 
     loss = CrossEntropyLoss()
 
@@ -70,6 +68,6 @@ if __name__ == '__main__':
         l.backward()
         optimizer.step()
 
-        if (epoch + 1) % 10000 == 0:
+        if (epoch + 1) % 500 == 0:
             losses.append(l.item())
             print(f"Train -  Loss: {l.item()}")

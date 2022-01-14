@@ -31,8 +31,8 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
 
     p = softmax(input)
 
-    # 负对数似然
-    errors = - p[np.arange(N), target.data].log()
+    errors = - target * p.log() / N
+    # errors = - p[np.arange(N), target.data].log()
 
     if reduction == "mean":
         loss = errors.sum() / N
