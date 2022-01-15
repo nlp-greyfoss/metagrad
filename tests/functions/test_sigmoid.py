@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 import metagrad.functions as F
-from metagrad.tensor import Tensor
+from metagrad.tensor import Tensor, debug_mode
 
 
 def test_simple_sigmoid():
@@ -25,15 +25,16 @@ def test_simple_sigmoid():
 def test_sigmoid():
     x = np.array([[0, 1, 2], [0, 2, 4]], np.float32)
 
-    mx = Tensor(x, requires_grad=True)
-    y = F.sigmoid(mx)
+    with debug_mode():
+        mx = Tensor(x, requires_grad=True)
+        y = F.sigmoid(mx)
 
-    tx = torch.tensor(x, requires_grad=True)
-    ty = torch.sigmoid(tx)
+        tx = torch.tensor(x, requires_grad=True)
+        ty = torch.sigmoid(tx)
 
-    assert np.allclose(y.data, ty.data)
+        assert np.allclose(y.data, ty.data)
 
-    y.sum().backward()
-    ty.sum().backward()
+        y.sum().backward()
+        ty.sum().backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+        assert np.allclose(mx.grad.data, tx.grad.data)
