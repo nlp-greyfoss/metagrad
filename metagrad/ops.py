@@ -220,6 +220,18 @@ class Neg(_Function):
     def backward(ctx, grad: ndarray) -> ndarray:
         return -grad
 
+class Abs(_Function):
+    def forward(ctx, x: ndarray) -> ndarray:
+        ctx.save_for_backward(x)
+        return np.abs(x)
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        x, = ctx.saved_tensors
+        # x中元素为0的位置，返回0
+        # 否则返回+1/-1
+        return np.where(x == 0, 0, x/np.abs(x))
+
+
 
 # ****变形和切片****
 class Slice(_Function):
