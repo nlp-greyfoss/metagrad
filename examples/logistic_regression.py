@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-import metagrad.functions as F
 from metagrad.loss import BCELoss
 from metagrad.module import Module, Linear
 from metagrad.optim import SGD
@@ -15,7 +14,7 @@ class LogisticRegression(Module):
         self.linear = Linear(input_dim, output_dim)
 
     def forward(self, x: Tensor) -> Tensor:
-        return F.sigmoid(self.linear(x))
+        return self.linear(x)
 
 
 def load_data(path, draw_picture=False):
@@ -53,9 +52,9 @@ if __name__ == '__main__':
 
     model = LogisticRegression(2, 1)
 
-    # print(model.linear.weight) Tensor([[-0.29942604  0.78735491]], requires_grad=True) 有问题的权重
-    # model.linear.weight.assign([[-0.29942604, 0.78735491]])
-    optimizer = SGD(model.parameters(), lr=1e-3)
+    # model.linear.weight.assign([[-0.29942604, 0.78735491]]) 有问题的权重
+    print(f"using weight: {model.linear.weight}")
+    optimizer = SGD(model.parameters(), lr=1e-4)
 
     loss = BCELoss()
 
