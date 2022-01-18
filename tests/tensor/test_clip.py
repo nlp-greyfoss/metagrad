@@ -43,5 +43,5 @@ def test_clip():
 
     assert y.numpy().tolist() == [3, 3, 3, 4, 5, 6, 6, 6, 6]
 
-    y.backward(np.ones_like(x.numpy()))
-    assert x.grad.data.tolist() == [0, 0, 1, 1, 1, 1, 0, 0, 0]
+    y.backward([2, 2, 2, 2, 2, 2, 2, 2, 2, ])
+    assert x.grad.data.tolist() == [0, 0, 2, 2, 2, 2, 0, 0, 0]

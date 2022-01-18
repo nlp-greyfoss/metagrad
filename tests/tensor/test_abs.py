@@ -7,6 +7,6 @@ def test_abs():
 
     assert y.data.tolist() == [1, 200, 0]
 
-    y.backward([1, 1, 1, ])
+    y.backward([2, 2, 2])
 
-    assert x.grad.data.tolist() == [-1, 1, 0]
+    assert x.grad.data.tolist() == [-2, 2, 0]

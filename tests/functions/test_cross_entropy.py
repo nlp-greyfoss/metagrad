@@ -5,6 +5,20 @@ import metagrad.functions as F
 from metagrad.tensor import Tensor
 
 
+def test_binary_cross_entropy():
+    N = 10
+    x = np.random.randn(N)
+    y = np.random.randint(0,1, (N,))
+
+    mx = Tensor(x, requires_grad=True)
+
+    tx = torch.tensor(x, dtype=torch.float32, requires_grad=True)
+    ty = torch.tensor(y, dtype=torch.float32)
+
+
+    assert torch.binary_cross_entropy_with_logits(tx, ty) == F.binary_cross_entropy(mx, y)
+
+
 def test_cross_entropy():
     x = np.array([[0, 1, 2, 3], [4, 0, 2, 1]], np.float32)
     t = np.array([3, 0]).astype(np.int32)

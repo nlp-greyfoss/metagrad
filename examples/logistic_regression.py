@@ -53,6 +53,8 @@ if __name__ == '__main__':
 
     model = LogisticRegression(2, 1)
 
+    # print(model.linear.weight) Tensor([[-0.29942604  0.78735491]], requires_grad=True) 有问题的权重
+    # model.linear.weight.assign([[-0.29942604, 0.78735491]])
     optimizer = SGD(model.parameters(), lr=1e-3)
 
     loss = BCELoss()

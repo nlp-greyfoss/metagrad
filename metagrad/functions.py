@@ -1,5 +1,3 @@
-import numpy as np
-
 from metagrad.tensor import Tensor
 
 
@@ -13,7 +11,16 @@ def softmax(x, axis=-1):
 
 
 def binary_cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
-    errors = -(target * input.log() + (1 - target) * (1 - input).log())
+    '''
+
+    :param input: logits
+    :param target: 真实标签 0或1
+    :param reduction: binary cross entropy loss
+    :return:
+    '''
+
+    neg_abs = - abs(input)
+    errors = input.clip(x_min=0) - input * target + (1 + neg_abs.exp()).log()
 
     N = len(target)
 

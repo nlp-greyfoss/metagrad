@@ -246,7 +246,7 @@ class Abs(_Function):
         x, = ctx.saved_tensors
         # x中元素为0的位置，返回0
         # 否则返回+1/-1
-        return np.where(x == 0, 0, x / np.abs(x))
+        return grad * np.where(x == 0, 0, x / np.abs(x))
 
 
 # ****变形和切片****

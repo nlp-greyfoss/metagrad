@@ -37,6 +37,12 @@ class BCELoss(_Loss):
         super().__init__(reduction)
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        '''
+
+        :param input: logits
+        :param target:  真实标签 0或1
+        :return:
+        '''
         return F.binary_cross_entropy(input, target, self.reduction)
 
 
