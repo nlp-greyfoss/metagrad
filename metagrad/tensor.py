@@ -1,8 +1,10 @@
+import contextlib
 import importlib
 import inspect
 from typing import Union, Tuple, Any
 
 import numpy as np
+import time
 
 # 默认数据类型
 _type = np.float32
@@ -33,6 +35,60 @@ def ensure_tensor(tensoralbe: Tensorable) -> "Tensor":
     if isinstance(tensoralbe, Tensor):
         return tensoralbe
     return Tensor(tensoralbe)
+
+
+class Config:
+    debug = False
+    backprop = True  # 是否需要计算并反向传播梯度
+
+
+# 上下文管理器
+# contextmanager 这个装饰器(decorator)接收一个生成器(generator)
+# 该generator必须只yield一个值出来，该值会被用在with语句中，绑定到as后面的变量
+# 我们这里只需要修改Config内部状态，不需要返回任何值，可以只加一个yield
+@contextlib.contextmanager
+def using_config(name, value):
+    # 保存旧值
+    old_value = getattr(Config, name)
+    # 设置新值
+    setattr(Config, name, value)
+    try:
+        yield
+    finally:
+        # 最终设回旧值
+        setattr(Config, name, old_value)
+
+
+def debug_mode():
+    return using_config("debug", True)
+
+
+def no_grad():
+    return using_config("backprop", False)
+
+
+class OpWrapper:
+    '''
+    支持反向传播的Debug
+    '''
+
+    def __init__(self, name, xs, backward=False):
+        self.name = f"back_{name}" if backward else name
+        self.xs = xs
+        self.output = None
+
+    def __enter__(self):
+        if Config.debug:
+            self.start = time.time()
+        return self
+
+    def __exit__(self, *junk):
+        if Config.debug:
+            end = (time.time() - self.start) * 1000
+            print(
+                f"{self.name:>20} : {end:>7.2f} ms {str([y.shape for y in self.xs]):>40} "
+                f"{'-> ' + str(self.output.shape) if self.output is not None else ''}"
+            )
 
 
 class Tensor:
@@ -176,6 +232,9 @@ class Tensor:
         # 只能在requires_grad=True的Tensor上调用此方法
         assert self.requires_grad, "called backward on tensor do not require grad"
 
+        if not Config.backprop:
+            return
+
         # 如果传递过来的grad为空
         if grad is None:
             if self.shape == ():
@@ -189,9 +248,12 @@ class Tensor:
 
         for t in self._rev_topo_sort():
             assert t.grad is not None
-            # 以逆序计算梯度，调用t相关运算操作的backward静态方法
-            # 计算流向其依赖节点上的梯度(流向其下游)
-            grads = t._ctx.backward(t._ctx, t.grad.data)
+
+            with OpWrapper(t._ctx.__class__.__name__, [t.grad], backward=True):
+                # 以逆序计算梯度，调用t相关运算操作的backward静态方法
+                # 计算流向其依赖节点上的梯度(流向其下游)
+                grads = t._ctx.backward(t._ctx, t.grad.data)
+
             # 如果只依赖一个输入，我们也通过列表来封装，防止zip将其继续拆分
             if len(t._ctx.depends_on) == 1:
                 grads = [grads]
