@@ -164,6 +164,22 @@ class Max(_Function):
         return mask * grad / div
 
 
+class Clip(_Function):
+    def forward(ctx, x: ndarray, x_min=None, x_max=None) -> ndarray:
+        if x_min is None:
+            x_min = np.min(x)
+        if x_max is None:
+            x_max = np.max(x)
+
+        ctx.save_for_backward(x, x_min, x_max)
+        return np.clip(x, x_min, x_max)
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        x, x_min, x_max = ctx.saved_tensors
+        mask = (x >= x_min) * (x <= x_max)
+        return grad * mask
+
+
 # ****矩阵运算****
 class Matmul(_Function):
     def forward(ctx, x: ndarray, y: ndarray) -> ndarray:
@@ -219,6 +235,18 @@ class Neg(_Function):
 
     def backward(ctx, grad: ndarray) -> ndarray:
         return -grad
+
+
+class Abs(_Function):
+    def forward(ctx, x: ndarray) -> ndarray:
+        ctx.save_for_backward(x)
+        return np.abs(x)
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        x, = ctx.saved_tensors
+        # x中元素为0的位置，返回0
+        # 否则返回+1/-1
+        return grad * np.where(x == 0, 0, x / np.abs(x))
 
 
 # ****变形和切片****

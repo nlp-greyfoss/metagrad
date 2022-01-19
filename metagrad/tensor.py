@@ -9,6 +9,12 @@ import time
 # 默认数据类型
 _type = np.float32
 
+# 设置显示精度
+np.set_printoptions(precision=4)
+# 抑制小数的科学计数法显示
+np.set_printoptions(suppress=True)
+
+
 # 可以转换为Numpy数组的类型
 Arrayable = Union[float, list, np.ndarray]
 
@@ -284,7 +290,7 @@ def register(name, fxn):
         # 调用apply方法
         return fxn.apply(fxn, *xs, **kwargs)
 
-    if name in ["pow", "neg"]:
+    if name in ["pow", "neg", "abs"]:
         setattr(Tensor, f"__{name}__", dispatch)
     else:
         # 为Tensor添加属性，名为name，值为dispatch函数引用
