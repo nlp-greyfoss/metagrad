@@ -1,6 +1,6 @@
+from metagrad import functions as F
 from metagrad.module import Module
 from metagrad.tensor import Tensor
-from metagrad import functions as F
 
 
 class _Loss(Module):
@@ -23,9 +23,9 @@ class MSELoss(_Loss):
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         errors = (input - target) ** 2
         if self.reduction == "mean":
-            loss = errors.sum(keepdims=False) / len(input)
+            loss = errors.sum() / len(input)
         elif self.reduction == "sum":
-            loss = errors.sum(keepdims=False)
+            loss = errors.sum()
         else:
             loss = errors
 
@@ -52,3 +52,26 @@ class CrossEntropyLoss(_Loss):
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return F.cross_entropy(input, target, self.reduction)
+
+
+class NLLLoss(_Loss):
+    def __init__(self, reduction: str = "mean") -> None:
+        super().__init__(reduction)
+
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        '''
+
+        :param input: 概率的对数
+        :param target: 类别one-hot向量
+        :return:
+        '''
+        errors = - target * input
+
+        if self.reduction == "mean":
+            loss = errors.sum() / len(input)
+        elif self.reduction == "sum":
+            loss = errors.sum()
+        else:
+            loss = errors
+
+        return loss

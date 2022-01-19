@@ -4,10 +4,11 @@ from sklearn import datasets
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from metagrad.loss import CrossEntropyLoss
+from metagrad.loss import NLLLoss
 from metagrad.module import Module, Linear
 from metagrad.optim import SGD
 from metagrad.tensor import Tensor
+import metagrad.functions as F
 
 
 class SoftmaxRegression(Module):
@@ -15,8 +16,8 @@ class SoftmaxRegression(Module):
         self.linear = Linear(input_dim, output_dim)
 
     def forward(self, x: Tensor) -> Tensor:
-        # 只要输出logits即可
-        return self.linear(x)
+        # 计算对数概率
+        return F.log_softmax(self.linear(x))
 
 
 def generate_dataset(draw_picture=False):
@@ -66,8 +67,8 @@ if __name__ == '__main__':
     model = SoftmaxRegression(4, 3)  # 4个特征 3个输出
 
     optimizer = SGD(model.parameters(), lr=1e-1)
-
-    loss = CrossEntropyLoss()
+    # 负对数似然
+    loss = NLLLoss()
 
     losses = []
 
