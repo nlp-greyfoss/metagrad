@@ -165,6 +165,10 @@ class Tensor:
     def __len__(self) -> int:
         return len(self.data)
 
+    def __gt__(self, other):
+        other = ensure_tensor(other)
+        return self.data > other.data
+
     def assign(self, x) -> "Tensor":
         '''将x的值赋予当前Tensor'''
         x = ensure_tensor(x)

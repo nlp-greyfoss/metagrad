@@ -48,3 +48,7 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     else:
         loss = errors
     return loss
+
+
+def relu(x: Tensor) -> Tensor:
+    return x * (x > 0)
