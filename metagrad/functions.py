@@ -16,6 +16,15 @@ def softmax(x, axis=-1):
     return y / y.sum(axis=axis, keepdims=True)
 
 
+def log_softmax(x, axis=-1):
+    '''
+    :param x: logits
+    :param axis:
+    :return:
+    '''
+    return x - logsumexp(x, axis)
+
+
 def binary_cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
     '''
 
