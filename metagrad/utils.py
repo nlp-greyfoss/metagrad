@@ -1,5 +1,6 @@
 from matplotlib import pyplot as plt
 from IPython import display
+from datetime import datetime
 
 
 def use_svg_display():
@@ -25,15 +26,16 @@ def set_axes(axes, xlabel, ylabel, xlim, ylim, xscale, yscale, legend):
         axes.legend(legend)
     axes.grid()
 
-def plot(X, Y=None, xlabel=None, ylabel=None, legend=None, xlim=None,
-         ylim=None, xscale='linear', yscale='linear',
+
+def plot(X, Y=None, xlabel=None, ylabel=None, title=None, saved_fname=None, random_fname=False,
+         legend=None, xlim=None, ylim=None, xscale='linear', yscale='linear',
          fmts=('-', 'm--', 'g-.', 'r:'), figsize=(3.5, 2.5), axes=None):
-    """通用画图类，来自d2l包"""
+    """通用画图类，修改自d2l包"""
     if legend is None:
         legend = []
 
     set_figsize(figsize)
-    axes = axes if axes else d2l.plt.gca()
+    axes = axes if axes else plt.gca()
 
     # 如果 `X` 有一个轴，输出True
     def has_one_axis(X):
@@ -55,3 +57,12 @@ def plot(X, Y=None, xlabel=None, ylabel=None, legend=None, xlim=None,
         else:
             axes.plot(y, fmt)
     set_axes(axes, xlabel, ylabel, xlim, ylim, xscale, yscale, legend)
+    plt.title(title)
+    plt.subplots_adjust(bottom=0.20)
+
+    if random_fname:
+        saved_fname = datetime.now().strftime("%Y%m%d%H%M%S")
+    if saved_fname:
+        plt.gcf().savefig(f"{saved_fname}.png", dpi=100)
+
+    plt.show()

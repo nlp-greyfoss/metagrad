@@ -14,7 +14,6 @@ np.set_printoptions(precision=4)
 # 抑制小数的科学计数法显示
 np.set_printoptions(suppress=True)
 
-
 # 可以转换为Numpy数组的类型
 Arrayable = Union[float, list, np.ndarray]
 
@@ -207,8 +206,9 @@ class Tensor:
         return cls(np.random.randn(*shape).astype(_type), **kwargs)
 
     @classmethod
-    def arange(cls, stop, start=0, **kwargs):
-        return cls(np.arange(start=start, stop=stop).astype(_type), **kwargs)
+    def arange(cls, stop, start=0, step=1, **kwargs):
+        stop, start = start, stop
+        return cls(np.arange(start=start, stop=stop, step=step).astype(_type), **kwargs)
 
     @classmethod
     def uniform(cls, *shape, **kwargs):

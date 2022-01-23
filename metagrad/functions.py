@@ -9,9 +9,13 @@ def logsumexp(x, axis=-1):
 def sigmoid(x: Tensor) -> Tensor:
     return 1 / (1 + (-x).exp())
 
+
 def relu(x: Tensor) -> Tensor:
     return x * (x > 0)
 
+
+def tanh(x: Tensor) -> Tensor:
+    return 2 * sigmoid(2 * x) - 1
 
 
 def softmax(x, axis=-1):
@@ -74,5 +78,3 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     else:
         loss = errors
     return loss
-
-
