@@ -9,6 +9,12 @@ import time
 # 默认数据类型
 _type = np.float32
 
+# 设置显示精度
+np.set_printoptions(precision=4)
+# 抑制小数的科学计数法显示
+np.set_printoptions(suppress=True)
+
+
 # 可以转换为Numpy数组的类型
 Arrayable = Union[float, list, np.ndarray]
 
