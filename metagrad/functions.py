@@ -4,6 +4,10 @@ from metagrad.tensor import Tensor
 def sigmoid(x: Tensor) -> Tensor:
     return 1 / (1 + (-x).exp())
 
+def relu(x: Tensor) -> Tensor:
+    return x * (x > 0)
+
+
 
 def softmax(x, axis=-1):
     y = x.exp()
@@ -50,5 +54,3 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     return loss
 
 
-def relu(x: Tensor) -> Tensor:
-    return x * (x > 0)

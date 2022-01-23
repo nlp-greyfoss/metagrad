@@ -187,6 +187,31 @@ class Tensor:
     def squeeze(self) -> Any:
         return self.numpy().squeeze()
 
+    # ****创造帮助函数****
+    @classmethod
+    def zeros(cls, *shape, **kwargs):
+        return cls(np.zeros(shape, dtype=_type), **kwargs)
+
+    @classmethod
+    def ones(cls, *shape, **kwargs):
+        return cls(np.ones(shape, dtype=_type), **kwargs)
+
+    @classmethod
+    def randn(cls, *shape, **kwargs):
+        return cls(np.random.randn(*shape).astype(_type), **kwargs)
+
+    @classmethod
+    def arange(cls, stop, start=0, **kwargs):
+        return cls(np.arange(start=start, stop=stop).astype(_type), **kwargs)
+
+    @classmethod
+    def uniform(cls, *shape, **kwargs):
+        return cls((np.random.uniform(-1., 1., size=shape) / np.sqrt(np.prod(shape))).astype(_type), **kwargs)
+
+    @classmethod
+    def eye(cls, dim, **kwargs):
+        return cls(np.eye(dim).astype(_type), **kwargs)
+
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
         return self.slice(idxs)
