@@ -1,8 +1,8 @@
 import numpy as np
 import torch
 
-import metagrad.functions as F
 from metagrad.tensor import Tensor, debug_mode
+import metagrad.functions as F
 
 
 def test_simple_relu():

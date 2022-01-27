@@ -61,7 +61,7 @@ def plot(X, Y=None, xlabel=None, ylabel=None, title=None, saved_fname=None, rand
     plt.subplots_adjust(bottom=0.20)
 
     if random_fname:
-        saved_fname = datetime.now().strftime("%Y%m%d%H%M%S")
+        saved_fname = datetime.now().strftime("%Y%m%d%H%M%S%f")
     if saved_fname:
         plt.gcf().savefig(f"{saved_fname}.png", dpi=100)
 
