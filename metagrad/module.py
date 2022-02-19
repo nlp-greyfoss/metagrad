@@ -88,7 +88,7 @@ class Sequential(Module):
 
         return parameters
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         for layer in self._layers:
             x = layer(x)
 
