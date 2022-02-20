@@ -10,7 +10,7 @@ ops.py保存所有运算操作相关的类
 '''
 
 
-class _Function:
+class Function:
     def __init__(self, *tensors: "Tensor") -> None:
         # 该操作所依赖的所有输入
         self.depends_on = [t for t in tensors]
@@ -77,7 +77,7 @@ def unbroadcast(grad: ndarray, in_shape: Tuple) -> ndarray:
 
 
 # ****二元运算****
-class Add(_Function):
+class Add(Function):
 
     def forward(ctx, x: ndarray, y: ndarray) -> ndarray:
         '''
@@ -95,7 +95,7 @@ class Add(_Function):
         return unbroadcast(grad, shape_x), unbroadcast(grad, shape_y)
 
 
-class Sub(_Function):
+class Sub(Function):
     def forward(ctx, x: ndarray, y: ndarray) -> ndarray:
         '''
         实现 z = x - y
@@ -108,7 +108,7 @@ class Sub(_Function):
         return unbroadcast(grad, shape_x), unbroadcast(-grad, shape_y)
 
 
-class Mul(_Function):
+class Mul(Function):
 
     def forward(ctx, x: ndarray, y: ndarray) -> ndarray:
         '''
@@ -125,7 +125,7 @@ class Mul(_Function):
 
 
 # Python3 只有 __truediv__ 相关魔法方法
-class TrueDiv(_Function):
+class TrueDiv(Function):
 
     def forward(ctx, x: ndarray, y: ndarray) -> ndarray:
         '''
@@ -140,7 +140,7 @@ class TrueDiv(_Function):
 
 
 # ****聚合运算****
-class Sum(_Function):
+class Sum(Function):
     def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
         ctx.save_for_backward(x.shape)
         return x.sum(axis, keepdims=keepdims)
@@ -151,7 +151,7 @@ class Sum(_Function):
         return np.broadcast_to(grad, x_shape)
 
 
-class Max(_Function):
+class Max(Function):
     def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
         ret = np.amax(x, axis=axis, keepdims=keepdims)
         ctx.save_for_backward(x, axis, ret, keepdims)
@@ -164,7 +164,7 @@ class Max(_Function):
         return mask * grad / div
 
 
-class Clip(_Function):
+class Clip(Function):
     def forward(ctx, x: ndarray, x_min=None, x_max=None) -> ndarray:
         if x_min is None:
             x_min = np.min(x)
@@ -181,7 +181,7 @@ class Clip(_Function):
 
 
 # ****矩阵运算****
-class Matmul(_Function):
+class Matmul(Function):
     def forward(ctx, x: ndarray, y: ndarray) -> ndarray:
         '''
         z = x @ y
@@ -196,7 +196,7 @@ class Matmul(_Function):
 
 
 # ****一元运算****
-class Pow(_Function):
+class Pow(Function):
     def forward(ctx, x: ndarray, c: ndarray) -> ndarray:
         ctx.save_for_backward(x, c)
         return x ** c
@@ -207,7 +207,7 @@ class Pow(_Function):
         return grad * c * x ** (c - 1), None
 
 
-class Log(_Function):
+class Log(Function):
     def forward(ctx, x: ndarray) -> ndarray:
         ctx.save_for_backward(x)
         # log = ln
@@ -218,7 +218,7 @@ class Log(_Function):
         return grad / x
 
 
-class Exp(_Function):
+class Exp(Function):
     def forward(ctx, x: ndarray) -> ndarray:
         ret = np.exp(x)
         ctx.save_for_backward(ret)
@@ -229,7 +229,7 @@ class Exp(_Function):
         return grad * ret
 
 
-class Neg(_Function):
+class Neg(Function):
     def forward(ctx, x: ndarray) -> ndarray:
         return -x
 
@@ -237,7 +237,7 @@ class Neg(_Function):
         return -grad
 
 
-class Abs(_Function):
+class Abs(Function):
     def forward(ctx, x: ndarray) -> ndarray:
         ctx.save_for_backward(x)
         return np.abs(x)
@@ -250,7 +250,7 @@ class Abs(_Function):
 
 
 # ****变形和切片****
-class Slice(_Function):
+class Slice(Function):
     def forward(ctx, x: ndarray, idxs: slice) -> ndarray:
         '''
         z = x[idxs]
@@ -270,7 +270,7 @@ class Slice(_Function):
         return bigger_grad, None
 
 
-class Reshape(_Function):
+class Reshape(Function):
     def forward(ctx, x: ndarray, shape: Tuple) -> ndarray:
         ctx.save_for_backward(x.shape)
         return x.reshape(shape)
@@ -280,7 +280,7 @@ class Reshape(_Function):
         return grad.reshape(x_shape), None
 
 
-class Transpose(_Function):
+class Transpose(Function):
     def forward(ctx, x: ndarray, axes) -> ndarray:
         ctx.save_for_backward(axes)
         return x.transpose(axes)

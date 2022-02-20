@@ -51,7 +51,12 @@ class CrossEntropyLoss(_Loss):
         super().__init__(reduction)
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
-        return F.cross_entropy(input, target, self.reduction)
+         '''
+         :param input: logits
+         :param target: 真实标签one-hot向量
+         :return:
+         '''
+         return F.cross_entropy(input, target, self.reduction)
 
 
 class NLLLoss(_Loss):

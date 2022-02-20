@@ -14,7 +14,6 @@ np.set_printoptions(precision=4)
 # 抑制小数的科学计数法显示
 np.set_printoptions(suppress=True)
 
-
 # 可以转换为Numpy数组的类型
 Arrayable = Union[float, list, np.ndarray]
 
@@ -171,6 +170,14 @@ class Tensor:
     def __len__(self) -> int:
         return len(self.data)
 
+    def __gt__(self, other):
+        other = ensure_tensor(other)
+        return self.data > other.data
+
+    def __lt__(self, other):
+        other = ensure_tensor(other)
+        return self.data < other.data
+
     def assign(self, x) -> "Tensor":
         '''将x的值赋予当前Tensor'''
         x = ensure_tensor(x)
@@ -188,6 +195,36 @@ class Tensor:
 
     def squeeze(self) -> Any:
         return self.numpy().squeeze()
+
+    # ****创造帮助函数****
+    @classmethod
+    def zeros(cls, *shape, **kwargs) -> "Tensor":
+        return cls(np.zeros(shape, dtype=_type), **kwargs)
+
+    @classmethod
+    def ones(cls, *shape, **kwargs) -> "Tensor":
+        return cls(np.ones(shape, dtype=_type), **kwargs)
+
+    @classmethod
+    def ones_like(cls, t: "Tensor", **kwargs) -> "Tensor":
+        return cls(np.ones(t.shape, dtype=_type), **kwargs)
+
+    @classmethod
+    def randn(cls, *shape, **kwargs) -> "Tensor":
+        return cls(np.random.randn(*shape).astype(_type), **kwargs)
+
+    @classmethod
+    def arange(cls, stop, start=0, step=1, **kwargs) -> "Tensor":
+        stop, start = start, stop
+        return cls(np.arange(start=start, stop=stop, step=step).astype(_type), **kwargs)
+
+    @classmethod
+    def uniform(cls, *shape, **kwargs) -> "Tensor":
+        return cls((np.random.uniform(-1., 1., size=shape) / np.sqrt(np.prod(shape))).astype(_type), **kwargs)
+
+    @classmethod
+    def eye(cls, dim, **kwargs) -> "Tensor":
+        return cls(np.eye(dim).astype(_type), **kwargs)
 
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
@@ -310,7 +347,7 @@ def register(name, fxn):
 def _register_ops(namespace):
     for name, cls in inspect.getmembers(namespace, inspect.isclass):
         if name[0] != "_" and name != 'Tensor':
-            # 注册所有_Function的子类
+            # 注册所有Function的子类
             register(name.lower(), cls)
 
 

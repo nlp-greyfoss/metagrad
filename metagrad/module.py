@@ -4,6 +4,7 @@ from typing import List
 
 import numpy as np
 
+import metagrad.functions as F
 from metagrad.paramater import Parameter
 from metagrad.tensor import Tensor
 
@@ -70,3 +71,37 @@ class Linear(Module):
             x = x + self.bias
 
         return x
+
+
+class Sequential(Module):
+    def __init__(self, *layers):
+        self._layers = layers
+
+    @property
+    def layers(self):
+        return self._layers
+
+    def parameters(self) -> List[Parameter]:
+        parameters = []
+        for layer in self._layers:
+            parameters.extend(layer.parameters())
+
+        return parameters
+
+    def forward(self, x: Tensor) -> Tensor:
+        for layer in self._layers:
+            x = layer(x)
+
+        return x
+
+
+class Flatten(Module):
+    def forward(self, input: Tensor) -> Tensor:
+        # 保留批次大小
+        return input.reshape(input.shape[0], -1)
+
+
+# ****激活函数作为Module实现****
+class ReLU(Module):
+    def forward(self, input: Tensor) -> Tensor:
+        return F.relu(input)
