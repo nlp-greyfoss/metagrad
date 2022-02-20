@@ -1,6 +1,10 @@
+import numpy as np
 from matplotlib import pyplot as plt
 from IPython import display
 from datetime import datetime
+import metagrad.module as nn
+from metagrad.optim import Optimizer
+from metagrad.tensor import Tensor
 
 
 def use_svg_display():
@@ -66,3 +70,63 @@ def plot(X, Y=None, xlabel=None, ylabel=None, title=None, saved_fname=None, rand
         plt.gcf().savefig(f"{saved_fname}.png", dpi=100)
 
     plt.show()
+
+
+def to_onehot(y, num_classes=None):
+    '''
+    将标签值转换为one-hot向量
+    :param y: 标签值 [0,1,2,...]
+    :param num_classes: 类别数
+    :return:
+    '''
+    if not num_classes:
+        num_classes = np.max(y) + 1
+    return np.eye(num_classes)[y]
+
+
+def make_batches(X, y, batch_size=32, shuffle=True):
+    '''
+    将数据集拆分成批大小为batch_size的批数据
+    :param X: 数据集 [样本数，样本维度]
+    :param y: 对应的标签
+    :param batch_size:  批大小
+    :param shuffle: 是否需要对数据进行洗牌
+    :return:
+    '''
+    n = X.shape[0]  # 样本数
+    if shuffle:
+        indexes = np.random.permutation(n)
+    else:
+        indexes = np.arange(n)
+
+    X_batches = [
+        Tensor(X[indexes, :][k:k + batch_size, :]) for k in range(0, n, batch_size)
+    ]
+    y_batches = [
+        Tensor(y[indexes][k:k + batch_size]) for k in range(0, n, batch_size)
+    ]
+
+    return X_batches, y_batches
+
+
+def loss_batch(model: nn.Module, loss_func, X_batch, y_batch, opt: Optimizer = None):
+    '''
+    对批数据计算损失
+    :param model: 模型
+    :param loss_func: 损失函数
+    :param X_batch:  数据批次
+    :param y_batch:  标签批次
+    :param opt: 优化类
+    :return: 损失值， 该批次大小
+    '''
+    loss = loss_func(model(X_batch), y_batch)
+    if opt is not None:
+        loss.backward()
+        opt.step()
+        opt.zero_grad()
+
+    return loss.item(), len(X_batch)
+
+
+def accuracy(y_pred, y_true):
+    return np.mean(np.argmax(y_pred, axis=1) == y_true)
