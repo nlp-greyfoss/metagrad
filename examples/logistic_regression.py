@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from metagrad.functions import sigmoid
 from metagrad.loss import BCELoss
 from metagrad.module import Module, Linear
 from metagrad.optim import SGD
@@ -54,7 +55,7 @@ if __name__ == '__main__':
 
     # model.linear.weight.assign([[-0.29942604, 0.78735491]]) 有问题的权重
     print(f"using weight: {model.linear.weight}")
-    optimizer = SGD(model.parameters(), lr=1e-4)
+    optimizer = SGD(model.parameters(), lr=1e-3)
 
     loss = BCELoss()
 
@@ -71,7 +72,7 @@ if __name__ == '__main__':
             total = 0
             correct = 0
             total += len(y)
-            correct += np.sum(outputs.numpy().round() == y.numpy())
+            correct += np.sum(sigmoid(outputs).numpy().round() == y.numpy())
             accuracy = 100 * correct / total
             losses.append(l.item())
 

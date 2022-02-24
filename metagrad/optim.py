@@ -1,6 +1,7 @@
 from typing import List
 
 from metagrad.paramater import Parameter
+from metagrad.tensor import no_grad
 
 
 class Optimizer:
@@ -25,5 +26,6 @@ class SGD(Optimizer):
         self.lr = lr
 
     def step(self) -> None:
-        for p in self.params:
-            p -= p.grad * self.lr
+        with no_grad():
+            for p in self.params:
+                p -= p.grad * self.lr
