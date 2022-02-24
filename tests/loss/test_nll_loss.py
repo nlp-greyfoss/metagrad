@@ -23,7 +23,7 @@ def test_simple_nll_loss():
     ml = my_loss(F.log_softmax(mx), mt)
     tl = torch_loss(torch.log_softmax(tx, dim=-1, dtype=torch.float32), tt)
 
-    assert ml.item() == tl.item()
+    assert np.allclose(ml.item(),  tl.item())
 
     ml.backward()
     tl.backward()
@@ -49,7 +49,7 @@ def test_nll_loss():
     ml = my_loss(F.log_softmax(mx), mt)
     tl = torch_loss(torch.log_softmax(tx, dim=-1, dtype=torch.float32), tt)
 
-    assert ml.item() == tl.item()
+    assert np.allclose(ml.item(),  tl.item())
 
     ml.backward()
     tl.backward()
