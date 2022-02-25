@@ -33,6 +33,9 @@ class MSELoss(_Loss):
 
 
 class BCELoss(_Loss):
+    '''
+    像torch BCEWithLogitsLoss
+    '''
     def __init__(self, reduction: str = "mean") -> None:
         super().__init__(reduction)
 
