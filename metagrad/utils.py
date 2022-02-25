@@ -1,7 +1,10 @@
-import numpy as np
-from matplotlib import pyplot as plt
-from IPython import display
 from datetime import datetime
+
+import numpy as np
+from IPython import display
+from matplotlib import pyplot as plt
+import matplotlib
+
 import metagrad.module as nn
 from metagrad.optim import Optimizer
 from metagrad.tensor import Tensor
@@ -10,6 +13,7 @@ from metagrad.tensor import Tensor
 def use_svg_display():
     '''使用svg格式在jupyter中显示绘图'''
     display.set_matplotlib_formats('svg')
+    matplotlib.use('TkAgg')
 
 
 def set_figsize(figsize=(3.5, 2.5)):
@@ -191,17 +195,38 @@ class Animator:
         self.config_axes()
         display.display(self.fig)
         display.clear_output(wait=True)
+        #plt.show()
 
 
-def train_batch(model: nn.Module, X_batch, y_batch, loss: nn.Module, opt: Optimizer):
+def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, batch_size: int = None):
+    '''
+    进行一次迭代
+    :param model: 模型
+    :param X: 样本数据
+    :param y: 样本标签
+    :param loss: 损失函数，reduction=None
+    :param opt: 优化器
+    :return: 损失 和 准确率
+    '''
+    assert loss.reduction is None, "loss.reduction must be null."
+    assert batch_size > 0, "batch size must greater than zero."
+
+    if batch_size is None:
+        X_batches, y_batches = [X], [y]
+    else:
+        X_batches, y_batches = make_batches(X, y, batch_size=batch_size)
     # 训练损失总和、训练准确度总和、样本总数
     metric = Accumulator(3)
+    for X_batch, y_batch in zip(X_batches, y_batches):
+        y_pred = model(X_batch)
+        l = loss(y_pred, y_batch)
 
-    y_pred = model(X_batch)
-    l = loss(y_pred, y_batch)
+        if opt is not None:
+            l.mean().backward()  # 相当于计算了均方误差
+            opt.step()
+            opt.zero_grad()
 
-    l.backward()
-    opt.step()
-    opt.zero_grad()
+        metric.add(l.sum().item(), accuracy(y_pred, y_batch), y_batch.size)
+    # 总损失 / 样本总数 ， 总准确率 / 样本总数
+    return metric[0] / metric[2], metric[1] / metric[2]
 
-    metric.add(l.sum())

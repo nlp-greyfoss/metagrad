@@ -178,9 +178,6 @@ class Tensor:
         other = ensure_tensor(other)
         return self.data < other.data
 
-    def __float__(self) -> float:
-        return float(self.data)
-
     def assign(self, x) -> "Tensor":
         '''将x的值赋予当前Tensor'''
         x = ensure_tensor(x)

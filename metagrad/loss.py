@@ -23,7 +23,7 @@ class MSELoss(_Loss):
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         errors = (input - target) ** 2
         if self.reduction == "mean":
-            loss = errors.sum() / len(input)
+            loss = errors.mean()
         elif self.reduction == "sum":
             loss = errors.sum()
         else:
@@ -73,7 +73,7 @@ class NLLLoss(_Loss):
         errors = - target * input
 
         if self.reduction == "mean":
-            loss = errors.sum() / len(input)
+            loss = errors.mean()
         elif self.reduction == "sum":
             loss = errors.sum()
         else:

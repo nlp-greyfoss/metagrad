@@ -150,6 +150,17 @@ class Sum(Function):
         # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
         return np.broadcast_to(grad, x_shape)
 
+class Mean(Function):
+    def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
+        out = x.mean(axis, keepdims=keepdims)
+        ctx.save_for_backward(x.shape, out.shape)
+        return out
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        x_shape, out_shape = ctx.saved_tensors
+        grad = grad * (np.prod(out_shape) / np.prod(x_shape))
+        # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
+        return np.broadcast_to(grad, x_shape)
 
 class Max(Function):
     def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
