@@ -73,7 +73,7 @@ class NLLLoss(_Loss):
         errors = - target * input
 
         if self.reduction == "mean":
-            loss = errors.mean()
+            loss = errors.sum() / len(input)
         elif self.reduction == "sum":
             loss = errors.sum()
         else:
