@@ -52,8 +52,9 @@ coverage.xml
 .pytest_cache/
 
 
-# png in examples
+# image in examples
 examples/*.png
+examples/*.gif
 
 # Translations
 *.mo

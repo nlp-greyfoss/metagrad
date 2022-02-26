@@ -1,25 +1,19 @@
+import os
 from datetime import datetime
 
+import imageio
 import numpy as np
-from IPython import display
 from matplotlib import pyplot as plt
-import matplotlib
 
 import metagrad.module as nn
 from metagrad.optim import Optimizer
 from metagrad.tensor import Tensor
 
 
-def use_svg_display():
-    '''使用svg格式在jupyter中显示绘图'''
-    display.set_matplotlib_formats('svg')
-    matplotlib.use('TkAgg')
-
-
-def set_figsize(figsize=(3.5, 2.5)):
+def set_figsize(figsize=(4.9, 3.5)):
     '''设置matplotlib的图标大小'''
-    use_svg_display()
     plt.rcParams['figure.figsize'] = figsize
+    plt.subplots_adjust(bottom=0.20)
 
 
 def set_axes(axes, xlabel, ylabel, xlim, ylim, xscale, yscale, legend):
@@ -66,13 +60,12 @@ def plot(X, Y=None, xlabel=None, ylabel=None, title=None, saved_fname=None, rand
             axes.plot(y, fmt)
     set_axes(axes, xlabel, ylabel, xlim, ylim, xscale, yscale, legend)
     plt.title(title)
-    plt.subplots_adjust(bottom=0.20)
+    plt.tight_layout()
 
     if random_fname:
         saved_fname = datetime.now().strftime("%Y%m%d%H%M%S%f")
     if saved_fname:
         plt.gcf().savefig(f"{saved_fname}.png", dpi=100)
-
     plt.show()
 
 
@@ -161,11 +154,13 @@ class Animator:
     def __init__(self, xlabel=None, ylabel=None, legend=None, xlim=None,
                  ylim=None, xscale='linear', yscale='linear',
                  fmts=('-', 'm--', 'g-.', 'r:'), nrows=1, ncols=1,
-                 figsize=(3.5, 2.5)):
+                 figsize=(4.9, 3.5), saved_file='animator', plot_show=True):
         # 增量地绘制多条线
         if legend is None:
             legend = []
-        use_svg_display()
+        self.saved_file = saved_file
+        self.filenames = []
+        self.file_index = 0
         self.fig, self.axes = plt.subplots(nrows, ncols, figsize=figsize)
         if nrows * ncols == 1:
             self.axes = [self.axes, ]
@@ -173,6 +168,12 @@ class Animator:
         self.config_axes = lambda: set_axes(
             self.axes[0], xlabel, ylabel, xlim, ylim, xscale, yscale, legend)
         self.X, self.Y, self.fmts = None, None, fmts
+
+    def _save_image(self, image_name=None):
+        if image_name is None:
+            image_name = self.saved_file
+        plt.tight_layout()
+        plt.savefig(image_name)
 
     def add(self, x, y):
         # 向图表中添加多个数据点
@@ -193,9 +194,30 @@ class Animator:
         for x, y, fmt in zip(self.X, self.Y, self.fmts):
             self.axes[0].plot(x, y, fmt)
         self.config_axes()
-        display.display(self.fig)
-        display.clear_output(wait=True)
-        #plt.show()
+        # 生成中间文件
+        filename = f'{self.file_index}.png'
+
+        self._save_image(filename)
+
+        self.filenames.append(filename)
+        self.file_index = self.file_index + 1
+
+    def show(self):
+        with imageio.get_writer(f'{self.saved_file}.gif', mode='I') as writer:
+            for filename in self.filenames:
+                image = imageio.imread(filename)
+                writer.append_data(image)
+
+        for filename in self.filenames:
+            os.remove(filename)
+
+        self.filenames = []
+        self.file_index = 0
+
+        self._save_image(f'{self.saved_file}.png')
+
+        plt.show()
+        plt.close()
 
 
 def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, batch_size: int = None):
@@ -206,6 +228,8 @@ def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, ba
     :param y: 样本标签
     :param loss: 损失函数，reduction=None
     :param opt: 优化器
+    :param batch_size: 批大小
+
     :return: 损失 和 准确率
     '''
     assert loss.reduction is None, "loss.reduction must be null."
@@ -229,4 +253,3 @@ def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, ba
         metric.add(l.sum().item(), accuracy(y_pred, y_batch), y_batch.size)
     # 总损失 / 样本总数 ， 总准确率 / 样本总数
     return metric[0] / metric[2], metric[1] / metric[2]
-
