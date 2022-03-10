@@ -111,10 +111,8 @@ def binary_cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean")
     neg_abs = - abs(input)
     errors = input.clip(x_min=0) - input * target + (1 + neg_abs.exp()).log()
 
-    N = len(target)
-
     if reduction == "mean":
-        loss = errors.sum() / N
+        loss = errors.mean()
     elif reduction == "sum":
         loss = errors.sum()
     else:
@@ -131,14 +129,13 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     :return:
     '''
 
-    N = len(target)
     axis = -1
 
     errors = target.sum(axis=axis, keepdims=True) * logsumexp(input, axis=axis) - (target * input).sum(axis=axis,
                                                                                                        keepdims=True)
 
     if reduction == "mean":
-        loss = errors.sum() / N
+        loss = errors.mean()
     elif reduction == "sum":
         loss = errors.sum()
     else:

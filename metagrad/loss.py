@@ -23,7 +23,7 @@ class MSELoss(_Loss):
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         errors = (input - target) ** 2
         if self.reduction == "mean":
-            loss = errors.sum() / len(input)
+            loss = errors.mean()
         elif self.reduction == "sum":
             loss = errors.sum()
         else:
@@ -33,6 +33,9 @@ class MSELoss(_Loss):
 
 
 class BCELoss(_Loss):
+    '''
+    像torch BCEWithLogitsLoss
+    '''
     def __init__(self, reduction: str = "mean") -> None:
         super().__init__(reduction)
 

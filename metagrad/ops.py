@@ -151,6 +151,19 @@ class Sum(Function):
         return np.broadcast_to(grad, x_shape)
 
 
+class Mean(Function):
+    def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
+        out = x.mean(axis, keepdims=keepdims)
+        ctx.save_for_backward(x.shape, out.shape)
+        return out
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        x_shape, out_shape = ctx.saved_tensors
+        grad = grad * (np.prod(out_shape) / np.prod(x_shape))
+        # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
+        return np.broadcast_to(grad, x_shape)
+
+
 class Max(Function):
     def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
         ret = np.amax(x, axis=axis, keepdims=keepdims)
@@ -251,14 +264,15 @@ class Abs(Function):
 
 # ****变形和切片****
 class Slice(Function):
-    def forward(ctx, x: ndarray, idxs: slice) -> ndarray:
+    def forward(ctx, x: ndarray, idxs: Any) -> ndarray:
         '''
         z = x[idxs]
         '''
         # 如果传入[1:3]，变成切片slice
         # 如果idxs传入单个索引，会被看成是整数，所以这里转换回来
-        if isinstance(idxs, ndarray):
+        if isinstance(idxs, np.ndarray) and idxs.shape == ():
             idxs = int(idxs.item())
+
         ctx.save_for_backward(x.shape, idxs)
         return x[idxs]
 
