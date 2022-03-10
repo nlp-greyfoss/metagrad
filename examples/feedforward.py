@@ -1,5 +1,7 @@
 import numpy as np
 
+from metagrad.dataloader import DataLoader
+from metagrad.dataset import TensorDataset
 from metagrad.functions import sigmoid
 from metagrad.tensor import Tensor
 
@@ -37,17 +39,27 @@ class Feedforward(nn.Module):
 
 # 加载数据集
 def load_dataset():
-    # 保留训练数据中前10000个最常出现的单词，舍弃低频单词
     (X_train, y_train), (X_test, y_test) = imdb.load_data(num_words=10000)
     # 标签的维度很重要，否则训练不起来
     y_train, y_test = y_train[:, np.newaxis], y_test[:, np.newaxis]
-    return X_train, X_test, y_train, y_test
+    X_train = vectorize_sequences(X_train)
+    X_test = vectorize_sequences(X_test)
+
+    # 保留验证集
+    # X_train有25000条数据，我们保留10000条作为验证集
+    X_val = X_train[:10000]
+    X_train = X_train[10000:]
+
+    y_val = y_train[:10000]
+    y_train = y_train[10000:]
+
+    return Tensor(X_train), Tensor(X_test), Tensor(y_train), Tensor(y_test), Tensor(X_val), Tensor(y_val)
 
 
 def indices_to_sentence(indices: Tensor):
-    # 单词索引字典 word -> index
+    # 单词索引字典 word -> indices
     word_index = imdb.get_word_index()
-    # 逆单词索引字典 index -> word
+    # 逆单词索引字典 indices -> word
     reverse_word_index = dict(
         [(value, key) for (key, value) in word_index.items()])
     # 将index列表转换为word列表
@@ -68,10 +80,10 @@ def vectorize_sequences(sequences, dimension=10000):
     return results
 
 
-def compute_loss_and_accury(X_batches, y_batches, model, loss_func, total_nums, opt=None):
+def compute_loss_and_accury(data_loader: DataLoader, model, loss_func, total_nums, opt=None):
     losses = []
     correct = 0
-    for X_batch, y_batch in zip(X_batches, y_batches):
+    for X_batch, y_batch in data_loader:
         y_pred = model(X_batch)
         l = loss_func(y_pred, y_batch)
 
@@ -92,18 +104,7 @@ def compute_loss_and_accury(X_batches, y_batches, model, loss_func, total_nums, 
 
 
 if __name__ == '__main__':
-    X_train, X_test, y_train, y_test = load_dataset()
-
-    X_train = vectorize_sequences(X_train)
-    X_test = vectorize_sequences(X_test)
-
-    # 保留验证集
-    # X_train有25000条数据，我们保留10000条作为验证集
-    X_val = X_train[:10000]
-    X_train = X_train[10000:]
-
-    y_val = y_train[:10000]
-    y_train = y_train[10000:]
+    X_train, X_test, y_train, y_test, X_val, y_val = load_dataset()
 
     model = Feedforward(10000, 128, 1)  # 输入大小10000,隐藏层大小128，输出只有一个，代表判断为正例的概率
 
@@ -116,23 +117,21 @@ if __name__ == '__main__':
     train_losses, val_losses = [], []
     train_accuracies, val_accuracies = [], []
 
-    # 由于数据过多，需要拆分成批次
-    X_train_batches, y_train_batches = make_batches(X_train, y_train, batch_size=batch_size)
+    # 由于数据过多，需要拆分成批次，使用自定义数据集和加载器
+    train_ds = TensorDataset(X_train, y_train)
+    train_dl = DataLoader(train_ds, batch_size=batch_size)
 
-    X_val_batches, y_val_batches = make_batches(X_val, y_val, batch_size=batch_size)
+    val_ds = TensorDataset(X_val, y_val)
+    val_dl = DataLoader(val_ds, batch_size=batch_size)
 
     for epoch in range(epochs):
-        # losses, nums = zip(*[loss_batch(model, loss, X_batch, y_batch, optimizer)
-        #                     for X_batch, y_batch in zip(X_train_batches, y_train_batches)])
-
-        train_loss, train_accuracy = compute_loss_and_accury(X_train_batches, y_train_batches, model, loss,
-                                                             len(X_train), optimizer)
+        train_loss, train_accuracy = compute_loss_and_accury(train_dl, model, loss, len(X_train), optimizer)
 
         train_losses.append(train_loss)
         train_accuracies.append(train_accuracy)
 
         with no_grad():
-            val_loss, val_accuracy = compute_loss_and_accury(X_val_batches, y_val_batches, model, loss, len(X_val))
+            val_loss, val_accuracy = compute_loss_and_accury(val_dl, model, loss, len(X_val))
 
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)

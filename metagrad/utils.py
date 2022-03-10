@@ -6,6 +6,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import metagrad.module as nn
+from metagrad.dataloader import DataLoader
+from metagrad.dataset import TensorDataset
 from metagrad.optim import Optimizer
 from metagrad.tensor import Tensor
 
@@ -220,7 +222,7 @@ class Animator:
         plt.close()
 
 
-def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, batch_size: int = None):
+def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, batch_size: int = 512):
     '''
     进行一次迭代
     :param model: 模型
@@ -233,15 +235,11 @@ def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, ba
     :return: 损失 和 准确率
     '''
     assert loss.reduction is None, "loss.reduction must be null."
-    assert batch_size > 0, "batch size must greater than zero."
 
-    if batch_size is None:
-        X_batches, y_batches = [X], [y]
-    else:
-        X_batches, y_batches = make_batches(X, y, batch_size=batch_size)
-    # 训练损失总和、训练准确度总和、样本总数
+    dataset = TensorDataset(X, y)
+    data_loader = DataLoader(dataset, batch_size=batch_size)
     metric = Accumulator(3)
-    for X_batch, y_batch in zip(X_batches, y_batches):
+    for X_batch, y_batch in data_loader:
         y_pred = model(X_batch)
         l = loss(y_pred, y_batch)
 
@@ -253,3 +251,22 @@ def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, ba
         metric.add(l.sum().item(), accuracy(y_pred, y_batch), y_batch.size)
     # 总损失 / 样本总数 ， 总准确率 / 样本总数
     return metric[0] / metric[2], metric[1] / metric[2]
+
+    # if batch_size is None:
+    #     X_batches, y_batches = [X], [y]
+    # else:
+    #     X_batches, y_batches = make_batches(X, y, batch_size=batch_size)
+    # # 训练损失总和、训练准确度总和、样本总数
+    # metric = Accumulator(3)
+    # for X_batch, y_batch in zip(X_batches, y_batches):
+    #     y_pred = model(X_batch)
+    #     l = loss(y_pred, y_batch)
+    #
+    #     if opt is not None:
+    #         l.mean().backward()  # 相当于计算了均方误差
+    #         opt.step()
+    #         opt.zero_grad()
+    #
+    #     metric.add(l.sum().item(), accuracy(y_pred, y_batch), y_batch.size)
+    # # 总损失 / 样本总数 ， 总准确率 / 样本总数
+    # return metric[0] / metric[2], metric[1] / metric[2]
