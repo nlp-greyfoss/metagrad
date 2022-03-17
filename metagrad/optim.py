@@ -5,8 +5,16 @@ from metagrad.tensor import no_grad
 
 
 class Optimizer:
-    def __init__(self, params: List[Parameter]) -> None:
+    def __init__(self, params, defaults) -> None:
+        '''
+
+        :param params: Tensor序列或字典
+        :param defaults:
+        '''
+        self.defaults = defaults
         self.params = params
+        # 参数分组，比如分为
+        param_groups = list(params)
 
     def zero_grad(self) -> None:
         for p in self.params:

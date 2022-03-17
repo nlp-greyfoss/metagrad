@@ -128,7 +128,17 @@ def loss_batch(model: nn.Module, loss_func, X_batch, y_batch, opt: Optimizer = N
 
 
 def accuracy(y_pred, y_true):
-    return np.mean(np.argmax(y_pred, axis=1) == y_true)
+    return np.mean(np.argmax(y_pred.numpy(), axis=1) == y_true.numpy())
+
+
+def regression_classification_metric(y_pred, y_true):
+    '''
+    回归问题当成分类时的评价指标
+    :param y_pred:
+    :param y_true:
+    :return:
+    '''
+    return np.sum(y_pred.numpy().round() == y_true.numpy()) / len(y_pred)
 
 
 class Accumulator:
@@ -222,23 +232,23 @@ class Animator:
         plt.close()
 
 
-def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, batch_size: int = 512):
+def run_epoch(model: nn.Module, data_loader: DataLoader, loss: nn.Module, opt: Optimizer = None,
+              activate_func=lambda x: x, evaluate_func=accuracy):
     '''
     进行一次迭代
+    :param data_loader: 数据加载器
     :param model: 模型
-    :param X: 样本数据
-    :param y: 样本标签
     :param loss: 损失函数，reduction=None
     :param opt: 优化器
-    :param batch_size: 批大小
+    :param activate_func: 网络最后一层补上的激活函数，默认原样输出
+    :param evaluate_func: 评价函数，默认为准确率
 
     :return: 损失 和 准确率
     '''
     assert loss.reduction is None, "loss.reduction must be null."
 
-    dataset = TensorDataset(X, y)
-    data_loader = DataLoader(dataset, batch_size=batch_size)
     metric = Accumulator(3)
+
     for X_batch, y_batch in data_loader:
         y_pred = model(X_batch)
         l = loss(y_pred, y_batch)
@@ -248,25 +258,6 @@ def run_epoch(model: nn.Module, X, y, loss: nn.Module, opt: Optimizer = None, ba
             opt.step()
             opt.zero_grad()
 
-        metric.add(l.sum().item(), accuracy(y_pred, y_batch), y_batch.size)
+        metric.add(l.sum().item(), evaluate_func(activate_func(y_pred), y_batch), y_batch.size)
     # 总损失 / 样本总数 ， 总准确率 / 样本总数
     return metric[0] / metric[2], metric[1] / metric[2]
-
-    # if batch_size is None:
-    #     X_batches, y_batches = [X], [y]
-    # else:
-    #     X_batches, y_batches = make_batches(X, y, batch_size=batch_size)
-    # # 训练损失总和、训练准确度总和、样本总数
-    # metric = Accumulator(3)
-    # for X_batch, y_batch in zip(X_batches, y_batches):
-    #     y_pred = model(X_batch)
-    #     l = loss(y_pred, y_batch)
-    #
-    #     if opt is not None:
-    #         l.mean().backward()  # 相当于计算了均方误差
-    #         opt.step()
-    #         opt.zero_grad()
-    #
-    #     metric.add(l.sum().item(), accuracy(y_pred, y_batch), y_batch.size)
-    # # 总损失 / 样本总数 ， 总准确率 / 样本总数
-    # return metric[0] / metric[2], metric[1] / metric[2]

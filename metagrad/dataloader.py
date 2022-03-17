@@ -7,7 +7,7 @@ from metagrad.dataset import Dataset
 
 class DataLoader:
     def __init__(self, dataset: Dataset, batch_size: int = 1,
-                 shuffle: bool = False):
+                 shuffle: bool = True):
         self.dataset = dataset
         self.shuffle = shuffle
         self.batch_size = batch_size
