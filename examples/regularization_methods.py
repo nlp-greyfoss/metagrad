@@ -1,6 +1,5 @@
-from examples.feedforward import load_dataset
 import metagrad.module as nn
-
+from examples.feedforward import load_dataset
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import TensorDataset
 from metagrad.functions import sigmoid
@@ -26,7 +25,7 @@ class DynamicFFN(nn.Module):
 
         for i in range(num_layers - 1):
             layers.append(nn.Linear(hidden_size, hidden_size // 2))
-            hidden_size = hidden_size // 2 # 后面的神经元数递减
+            hidden_size = hidden_size // 2  # 后面的神经元数递减
             layers.append(nn.ReLU())
 
         layers.append(nn.Linear(hidden_size, output_size))  # 输出层，将隐藏向量转换为输出
@@ -70,6 +69,7 @@ def compare_model(train_dl, val_dl, original_model, new_model, original_opt, new
 
     animator.show()
 
+
 def simple_and_complex(input_size, output_size, train_dl, val_dl):
     '''
     比较简单模型和复杂模型
@@ -83,9 +83,10 @@ def simple_and_complex(input_size, output_size, train_dl, val_dl):
     simple_opt = SGD(simple_model.parameters(), lr=0.1)
 
     complex_model = DynamicFFN(4, input_size, 128, output_size)
-    complex_opt = SGD(simple_model.parameters(), lr=0.1)
+    complex_opt = SGD(complex_model.parameters(), lr=0.1)
 
     compare_model(train_dl, val_dl, simple_model, complex_model, simple_opt, complex_opt)
+
 
 def complex_with_l2_or_not(input_size, output_size, train_dl, val_dl):
     '''
@@ -100,9 +101,7 @@ def complex_with_l2_or_not(input_size, output_size, train_dl, val_dl):
     complex_opt = SGD(complex_model.parameters(), lr=0.1)
 
     complex_l2_model = DynamicFFN(4, input_size, 128, output_size)
-    complex_l2_opt = SGD([
-        {"params": complex_l2_model.weight, 'weight_decay': 1}, # 只有权重需要正则化
-        {"params": complex_l2_model.bias}], lr=0.1)
+    complex_l2_opt = SGD(complex_l2_model.parameters(), weight_decay=0.001, lr=0.1)
 
     compare_model(train_dl, val_dl, complex_model, complex_l2_model, complex_opt, complex_l2_opt, "Complex model",
                   "Complex Model(L2)")
@@ -122,7 +121,3 @@ if __name__ == '__main__':
     output_size = 1
 
     complex_with_l2_or_not(input_size, output_size, train_dl, val_dl)
-
-
-
-
