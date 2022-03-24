@@ -1,18 +1,15 @@
+import matplotlib.pyplot as plt
 import numpy as np
+from keras.datasets import imdb
 
+import metagrad.module as nn
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import TensorDataset
 from metagrad.functions import sigmoid
-from metagrad.tensor import Tensor
-
-import metagrad.module as nn
-from keras.datasets import imdb
 from metagrad.loss import BCELoss
 from metagrad.optim import SGD
-from metagrad.utils import make_batches, loss_batch, accuracy
+from metagrad.tensor import Tensor
 from metagrad.tensor import no_grad
-
-import matplotlib.pyplot as plt
 
 
 class Feedforward(nn.Module):
