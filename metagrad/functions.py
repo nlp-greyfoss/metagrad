@@ -1,7 +1,7 @@
 import numpy as np
 from numpy import ndarray
 
-from metagrad.tensor import Tensor
+from metagrad.tensor import Tensor, Config
 from metagrad.ops import Function
 
 
@@ -141,3 +141,14 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     else:
         loss = errors
     return loss
+
+
+def dropout(input: Tensor, p: float = 0.5):
+    '''
+    p: dropout ratio
+    '''
+    if Config.train:
+        mask = np.random.binomial(1, p, size=input.shape)
+        return input * Tensor(mask, requires_grad=False) / (1 - p)
+    else:
+        return input
