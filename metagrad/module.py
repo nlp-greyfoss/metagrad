@@ -105,3 +105,16 @@ class Flatten(Module):
 class ReLU(Module):
     def forward(self, input: Tensor) -> Tensor:
         return F.relu(input)
+
+
+# Dropout
+class Dropout(Module):
+    def __init__(self, p: float = 0.5) -> None:
+        '''
+
+        :param p: 丢弃率
+        '''
+        self.p = p
+
+    def forward(self, input: Tensor) -> Tensor:
+        return F.dropout(input, self.p)

@@ -45,6 +45,7 @@ def ensure_tensor(tensoralbe: Tensorable) -> "Tensor":
 class Config:
     debug = False
     backprop = True  # 是否需要计算并反向传播梯度
+    train = True
 
 
 # 上下文管理器
@@ -70,6 +71,10 @@ def debug_mode():
 
 def no_grad():
     return using_config("backprop", False)
+
+
+def eval_mode():
+    return using_config("train", False)
 
 
 class OpWrapper:

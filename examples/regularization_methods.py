@@ -1,3 +1,5 @@
+from typing import List
+
 import metagrad.module as nn
 from examples.feedforward import load_dataset
 from metagrad.dataloader import DataLoader
@@ -5,6 +7,7 @@ from metagrad.dataset import TensorDataset
 from metagrad.functions import sigmoid
 from metagrad.loss import BCELoss
 from metagrad.optim import SGD
+from metagrad.paramater import Parameter
 from metagrad.tensor import no_grad, Tensor
 from metagrad.utils import Animator, run_epoch, regression_classification_metric
 
@@ -34,6 +37,20 @@ class DynamicFFN(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.net(x)
+
+    def weights(self) -> List[Parameter]:
+        parameters = []
+        for layer in self.net.layers:
+            if isinstance(layer, nn.Linear):
+                parameters.append(layer.weight)
+        return parameters
+
+    def bias(self) -> List[Parameter]:
+        parameters = []
+        for layer in self.net.layers:
+            if isinstance(layer, nn.Linear):
+                parameters.append(layer.bias)
+        return parameters
 
 
 def train_model(model, opt, train_dl, val_dl, num_epochs=20):
@@ -97,11 +114,15 @@ def complex_with_l2_or_not(input_size, output_size, train_dl, val_dl):
     :param val_dl:
     :return:
     '''
-    complex_model = DynamicFFN(4, input_size, 128, output_size)
+    complex_model = DynamicFFN(1, input_size, 256, output_size)
     complex_opt = SGD(complex_model.parameters(), lr=0.1)
 
-    complex_l2_model = DynamicFFN(4, input_size, 128, output_size)
-    complex_l2_opt = SGD(complex_l2_model.parameters(), weight_decay=0.001, lr=0.1)
+    complex_l2_model = DynamicFFN(1, input_size, 256, output_size)
+    # 只为权重设置L2惩罚
+    complex_l2_opt = SGD([
+        {"params": complex_l2_model.weights(), 'weight_decay': 0.01},
+        {"params": complex_l2_model.bias()}], lr=0.1
+    )
 
     compare_model(train_dl, val_dl, complex_model, complex_l2_model, complex_opt, complex_l2_opt, "Complex model",
                   "Complex Model(L2)")
