@@ -1,6 +1,6 @@
 import numpy as np
 import metagrad.functions as F
-from metagrad.tensor import Tensor, eval_mode
+from metagrad.tensor import Tensor
 
 
 def test_forward():
@@ -8,8 +8,7 @@ def test_forward():
     y = F.dropout(Tensor(x), p=0)
     assert np.allclose(y.data, x)
 
-    with eval_mode():
-        y = F.dropout(x, p=0.5)
+    y = F.dropout(x, p=0.5, training=False)
 
     assert np.allclose(y.data, x)
 
