@@ -14,6 +14,11 @@ class Module:
     所有模型的基类
     '''
 
+    training : bool
+
+    def __init__(self) -> None:
+        self.training = True
+
     def parameters(self) -> List[Parameter]:
         parameters = []
         for name, value in inspect.getmembers(self):
@@ -34,6 +39,17 @@ class Module:
     def forward(self, *args, **kwargs) -> Tensor:
         raise NotImplementedError
 
+    def train(self, mode: bool = True):
+        self.training = mode
+        return self
+
+    def eval(self):
+        """
+        只会影响某些模型，比如Dropout和BatchNorm等
+        :return:
+        """
+        return self.train(False)
+
 
 class Linear(Module):
     r"""
@@ -52,6 +68,7 @@ class Linear(Module):
         """
 
     def __init__(self, in_features: int, out_features: int, bias: bool = True) -> None:
+        super(Linear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
 
@@ -75,6 +92,7 @@ class Linear(Module):
 
 class Sequential(Module):
     def __init__(self, *layers):
+        super(Sequential, self).__init__()
         self._layers = layers
 
     @property
@@ -94,6 +112,14 @@ class Sequential(Module):
 
         return x
 
+    def train(self, mode: bool = True):
+        for layer in self._layers:
+            layer.train(mode)
+
+    def eval(self):
+        for layer in self._layers:
+            layer.train(False)
+
 
 class Flatten(Module):
     def forward(self, input: Tensor) -> Tensor:
@@ -110,11 +136,13 @@ class ReLU(Module):
 # Dropout
 class Dropout(Module):
     def __init__(self, p: float = 0.5) -> None:
-        '''
-
+        """
         :param p: 丢弃率
-        '''
+        """
+
+        super(Dropout, self).__init__()
+
         self.p = p
 
     def forward(self, input: Tensor) -> Tensor:
-        return F.dropout(input, self.p)
+        return F.dropout(input, self.p, self.training)

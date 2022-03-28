@@ -143,11 +143,13 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     return loss
 
 
-def dropout(input: Tensor, p: float = 0.5) -> Tensor:
-    '''
+def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
+    """
+    input: 输入
     p: dropout ratio 丢弃率
-    '''
-    if Config.train:
+    training: 是否为训练阶段
+    """
+    if training:
         # 丢弃掩码 1代表保留，0代表丢弃 以1-p的概率生成输出为1伯努利分布，做了input的元素个数这么多次实验
         mask = np.random.binomial(1, 1-p, size=input.shape)
         # 让输入乘上这个与之同shape的丢弃掩码，然后除以1-p进行缩放，这样在测试时，可以原样输出
