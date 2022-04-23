@@ -197,11 +197,11 @@ class Tensor:
         return self.numpy().squeeze()
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
-        self.data = np.random.uniform(low, high)
+        self.data = np.random.uniform(low, high, size=self.shape)
         return self
 
     def normal_(self, mean: float = 0.0, std: float = 1.0) -> "Tensor":
-        self.data = np.random.normal(mean, std)
+        self.data = np.random.normal(mean, std, size=self.shape)
         return self
 
     # ****创造帮助函数****
