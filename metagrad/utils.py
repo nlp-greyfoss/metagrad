@@ -258,6 +258,6 @@ def run_epoch(model: nn.Module, data_loader: DataLoader, loss: nn.Module, opt: O
             opt.step()
             opt.zero_grad()
 
-        metric.add(l.sum().item(), evaluate_func(activate_func(y_pred), y_batch), y_batch.size)
+        metric.add(l.sum().item(), evaluate_func(activate_func(y_pred), y_batch), y_batch.size())
     # 总损失 / 样本总数 ， 总准确率 / 样本总数
     return metric[0] / metric[2], metric[1] / metric[2]

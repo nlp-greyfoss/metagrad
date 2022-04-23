@@ -45,7 +45,7 @@ def ensure_tensor(tensoralbe: Tensorable) -> "Tensor":
 class Config:
     debug = False
     backprop = True  # 是否需要计算并反向传播梯度
-    
+
 
 # 上下文管理器
 # contextmanager 这个装饰器(decorator)接收一个生成器(generator)
@@ -148,14 +148,6 @@ class Tensor:
         '''返回Tensor中数据的类型'''
         return self.data.dtype
 
-    @property
-    def size(self) -> int:
-        '''
-        返回Tensor中元素的个数 等同于np.prod(a.shape)
-        Returns:
-        '''
-        return self.data.size
-
     def zero_grad(self) -> None:
         '''
         将梯度初始化为0
@@ -186,6 +178,14 @@ class Tensor:
         self.data = x.data
         return self
 
+    def size(self, dim=None) -> int:
+        '''
+        如果dim为None，返回Tensor中元素的个数 等同于np.prod(a.shape)；
+        如果dim不为None，返回该维度上的元素个数
+        Returns:
+        '''
+        return np.size(self.data, dim)
+
     def numpy(self) -> np.ndarray:
         """转换为Numpy数组"""
         return self.data
@@ -195,6 +195,14 @@ class Tensor:
 
     def squeeze(self) -> Any:
         return self.numpy().squeeze()
+
+    def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
+        self.data = np.random.uniform(low, high, size=self.shape)
+        return self
+
+    def normal_(self, mean: float = 0.0, std: float = 1.0) -> "Tensor":
+        self.data = np.random.normal(mean, std, size=self.shape)
+        return self
 
     # ****创造帮助函数****
     @classmethod

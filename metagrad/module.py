@@ -1,12 +1,10 @@
 import inspect
-import math
 from typing import List
-
-import numpy as np
 
 import metagrad.functions as F
 from metagrad.paramater import Parameter
 from metagrad.tensor import Tensor
+from metagrad import init
 
 
 class Module:
@@ -14,7 +12,7 @@ class Module:
     所有模型的基类
     '''
 
-    training : bool
+    training: bool
 
     def __init__(self) -> None:
         self.training = True
@@ -80,7 +78,7 @@ class Linear(Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        self.weight.assign(np.random.randn(self.out_features, self.in_features) / math.sqrt(self.in_features))
+        init.kaiming_normal_(self.weight)  # 默认采用kaiming初始化
 
     def forward(self, input: Tensor) -> Tensor:
         x = input @ self.weight.T
