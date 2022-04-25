@@ -54,9 +54,9 @@ def xavier_uniform_(tensor: Tensor) -> Tensor:
     '''
     fan_in, fan_out = _calculate_fan_in_and_fan_out(tensor)
     std = math.sqrt(2.0 / float(fan_in + fan_out))
-    a = math.sqrt(3.0) * std  # 计算均匀分布的边界
+    bound = math.sqrt(3.0) * std  # 计算均匀分布的边界
 
-    return _no_grad_uniform_(tensor, -a, a)
+    return _no_grad_uniform_(tensor, -bound, bound)
 
 
 def xavier_normal_(tensor: Tensor) -> Tensor:
@@ -76,8 +76,7 @@ def kaiming_uniform_(tensor: Tensor, mode='fan_in') -> Tensor:
     fan = _calculate_correct_fan(tensor, mode)
     std = 1 / math.sqrt(fan)
     bound = math.sqrt(6.0) * std
-    with no_grad():
-        return tensor.uniform_(-bound, bound)
+    return _no_grad_uniform_(tensor, -bound, bound)
 
 
 def kaiming_normal_(tensor, mode='fan_in') -> Tensor:
@@ -86,5 +85,4 @@ def kaiming_normal_(tensor, mode='fan_in') -> Tensor:
     '''
     fan = _calculate_correct_fan(tensor, mode)
     std = math.sqrt(2.0 / fan)
-    with no_grad():
-        return tensor.normal_(0, std)
+    return _no_grad_normal_(tensor, 0., std)
