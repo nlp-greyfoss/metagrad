@@ -1,8 +1,8 @@
 import numpy as np
 from numpy import ndarray
 
-from metagrad.tensor import Tensor, Config
 from metagrad.ops import Function
+from metagrad.tensor import Tensor
 
 
 # ----激活函数----
@@ -151,8 +151,26 @@ def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
     """
     if training:
         # 丢弃掩码 1代表保留，0代表丢弃 以1-p的概率生成输出为1伯努利分布，做了input的元素个数这么多次实验
-        mask = np.random.binomial(1, 1-p, size=input.shape)
+        mask = np.random.binomial(1, 1 - p, size=input.shape)
         # 让输入乘上这个与之同shape的丢弃掩码，然后除以1-p进行缩放，这样在测试时，可以原样输出
         return input * Tensor(mask, requires_grad=False) / (1 - p)
     else:
         return input
+
+
+class Embedding(Function):
+    def forward(ctx, x: ndarray, weight: ndarray) -> ndarray:
+        ctx.save_for_backward(x, weight.shape)
+        return weight[x]
+
+    def backward(ctx, grad: ndarray) -> ndarray:
+        x, w_shape = ctx.saved_tensors
+
+        bigger_grad = np.zeros(w_shape, dtype=grad.dtype)
+        np.add.at(bigger_grad, x, grad)
+
+        return bigger_grad
+
+
+def embedding(x: Tensor, weight: Tensor) -> Tensor:
+    return Embedding.apply(Embedding, x, weight)

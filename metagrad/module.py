@@ -1,10 +1,10 @@
 import inspect
-from typing import List
+from typing import List, Optional
 
 import metagrad.functions as F
+from metagrad import init
 from metagrad.paramater import Parameter
 from metagrad.tensor import Tensor
-from metagrad import init
 
 
 class Module:
@@ -87,6 +87,33 @@ class Linear(Module):
 
         return x
 
+
+class Embedding(Module):
+    def __init__(self, num_embeddings: int, embedding_dim: int, _weight: Optional[Tensor] = None) -> None:
+        '''
+        一个存储固定大小词汇表嵌入的查找表，可以通过索引(列表)直接访问，而不是one-hot向量。
+        :param num_embeddings: 词汇表大小
+        :param embedding_dim:  嵌入维度
+        '''
+
+        super(Embedding, self).__init__()
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+
+        # 也可以传预训练好的权重进来
+        if _weight is None:
+            self.weight = Parameter(Tensor.empty((num_embeddings, embedding_dim)))
+            self.reset_parameters()
+        else:
+            assert list(_weight.shape) == [num_embeddings, embedding_dim], \
+                'Shape of weight does not match num_embeddings and embedding_dim'
+            self.weight = Parameter(_weight)
+
+    def reset_parameters(self) -> None:
+        init.normal_(self.weight)
+
+    def forward(self, input: Tensor) -> Tensor:
+        return F.embedding(input, self.weight)
 
 class Sequential(Module):
     def __init__(self, *layers):
