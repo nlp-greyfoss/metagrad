@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import numpy as np
 from numpy import ndarray
 
@@ -159,18 +161,20 @@ def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
 
 
 class Embedding(Function):
-    def forward(ctx, x: ndarray, weight: ndarray) -> ndarray:
-        ctx.save_for_backward(x, weight.shape)
-        return weight[x]
+    def forward(ctx, weight: ndarray, indices: ndarray) -> ndarray:
+        ctx.save_for_backward(weight.shape, indices)
+        return weight[indices]
 
-    def backward(ctx, grad: ndarray) -> ndarray:
-        x, w_shape = ctx.saved_tensors
+    def backward(ctx, grad: ndarray) -> Tuple[ndarray, None]:
+        w_shape, indices = ctx.saved_tensors
 
         bigger_grad = np.zeros(w_shape, dtype=grad.dtype)
-        np.add.at(bigger_grad, x, grad)
+        np.add.at(bigger_grad, indices, grad)
 
-        return bigger_grad
+        # 因为它有两个输入，防止错误地拆开bigger_grad
+        # indices 不需要梯度
+        return bigger_grad, None
 
 
-def embedding(x: Tensor, weight: Tensor) -> Tensor:
-    return Embedding.apply(Embedding, x, weight)
+def embedding(weight: Tensor, indices: Tensor) -> Tensor:
+    return Embedding.apply(Embedding, weight, indices)

@@ -113,7 +113,17 @@ class Embedding(Module):
         init.normal_(self.weight)
 
     def forward(self, input: Tensor) -> Tensor:
-        return F.embedding(input, self.weight)
+        return F.embedding(self.weight, input)
+
+    @classmethod
+    def from_pretrained(cls, embeddings: Tensor, freeze=True):
+        assert embeddings.ndim == 2, \
+            'Embeddings parameter is expected to be 2-dimensional'
+        rows, cols = embeddings.shape
+        embedding = cls(num_embeddings=rows, embedding_dim=cols, _weight=embeddings)
+        embedding.weight.requires_grad = not freeze
+        return embedding
+
 
 class Sequential(Module):
     def __init__(self, *layers):

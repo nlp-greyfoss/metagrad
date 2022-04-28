@@ -280,8 +280,9 @@ class Tensor:
         Returns:
 
         '''
-        # 只能在requires_grad=True的Tensor上调用此方法
-        assert self.requires_grad, "called backward on tensor do not require grad"
+        # 如果不需要计算梯度，则返回，而不是报错
+        if not self.requires_grad:
+            return
 
         if not Config.backprop:
             return
