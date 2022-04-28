@@ -1,10 +1,10 @@
 import contextlib
 import importlib
 import inspect
+import time
 from typing import Union, Tuple, Any
 
 import numpy as np
-import time
 
 # 默认数据类型
 _type = np.float32
@@ -18,16 +18,17 @@ np.set_printoptions(suppress=True)
 Arrayable = Union[float, list, np.ndarray]
 
 
-def ensure_array(arrayable: Arrayable) -> np.ndarray:
+def ensure_array(arrayable: Arrayable, dtype=_type) -> np.ndarray:
     """
     :param arrayable:
+    :param dtype:
     :return:
     """
     if isinstance(arrayable, (np.ndarray, slice, tuple)):
         # 如果本身是ndarray或slice或tuple(元组里面都是slice)
         return arrayable
     # 转换为Numpy数组
-    return np.array(arrayable, dtype=_type)
+    return np.array(arrayable, dtype=dtype)
 
 
 Tensorable = Union["Tensor", float, np.ndarray]
@@ -97,16 +98,17 @@ class OpWrapper:
 
 
 class Tensor:
-    def __init__(self, data: Arrayable, requires_grad: bool = False) -> None:
+    def __init__(self, data: Arrayable, requires_grad: bool = False, dtype=_type) -> None:
         '''
         初始化Tensor对象
         Args:
             data: 数据
             requires_grad: 是否需要计算梯度
+            dtype: 数据类型，默认为float
         '''
 
         # data 是 np.ndarray
-        self._data = ensure_array(data)
+        self._data = ensure_array(data, dtype)
 
         self.requires_grad = requires_grad
         # 保存该Tensor的梯度
@@ -206,33 +208,37 @@ class Tensor:
 
     # ****创造帮助函数****
     @classmethod
-    def zeros(cls, *shape, **kwargs) -> "Tensor":
-        return cls(np.zeros(shape, dtype=_type), **kwargs)
+    def empty(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
+        return cls(np.empty(*shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def ones(cls, *shape, **kwargs) -> "Tensor":
-        return cls(np.ones(shape, dtype=_type), **kwargs)
+    def zeros(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
+        return cls(np.zeros(shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def ones_like(cls, t: "Tensor", **kwargs) -> "Tensor":
-        return cls(np.ones(t.shape, dtype=_type), **kwargs)
+    def ones(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
+        return cls(np.ones(shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def randn(cls, *shape, **kwargs) -> "Tensor":
-        return cls(np.random.randn(*shape).astype(_type), **kwargs)
+    def ones_like(cls, t: "Tensor", dtype=_type, **kwargs) -> "Tensor":
+        return cls(np.ones(t.shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def arange(cls, stop, start=0, step=1, **kwargs) -> "Tensor":
+    def randn(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
+        return cls(np.random.randn(*shape).astype(dtype), **kwargs)
+
+    @classmethod
+    def arange(cls, stop, start=0, step=1, dtype=_type, **kwargs) -> "Tensor":
         stop, start = start, stop
-        return cls(np.arange(start=start, stop=stop, step=step).astype(_type), **kwargs)
+        return cls(np.arange(start=start, stop=stop, step=step).astype(dtype), **kwargs)
 
     @classmethod
-    def uniform(cls, *shape, **kwargs) -> "Tensor":
-        return cls((np.random.uniform(-1., 1., size=shape) / np.sqrt(np.prod(shape))).astype(_type), **kwargs)
+    def uniform(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
+        return cls((np.random.uniform(-1., 1., size=shape) / np.sqrt(np.prod(shape))).astype(dtype), **kwargs)
 
     @classmethod
-    def eye(cls, dim, **kwargs) -> "Tensor":
-        return cls(np.eye(dim).astype(_type), **kwargs)
+    def eye(cls, dim, dtype=_type, **kwargs) -> "Tensor":
+        return cls(np.eye(dim).astype(dtype), **kwargs)
 
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
@@ -318,15 +324,6 @@ class Tensor:
                     # grad Tensor
                     gt = Tensor(g)
                     t._grad = gt if t.grad is None else t.grad + gt
-
-    # ****帮助函数****
-    @classmethod
-    def empty(cls, *shape, **kwargs):
-        return cls(np.empty(*shape, dtype=_type), **kwargs)
-
-    @classmethod
-    def zeros(cls, *shape, **kwargs):
-        return cls(np.zeros(shape, dtype=_type), **kwargs)
 
 
 def register(name, fxn):

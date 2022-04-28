@@ -10,9 +10,7 @@ def test_simple_embedding():
     embed = nn.Embedding(n, d)
 
     x = 2
-    mx = Tensor(x)
-    # TODO 构造tensor时指定dtype
-    mx.data = np.array(2, dtype=int)
+    mx = Tensor(x, dtype=np.int)
     my = embed(mx)
 
     my.sum().backward()
@@ -26,9 +24,7 @@ def test_from_pretrained():
     embed = nn.Embedding.from_pretrained(weight, freeze=False)
 
     x = [0, 2]
-    mx = Tensor(x)
-    # TODO 构造tensor时指定dtype
-    mx.data = np.array(x, dtype=int)
+    mx = Tensor(x, dtype=np.int)
     my = embed(mx)
 
     my.sum().backward()
