@@ -1,9 +1,13 @@
 from collections import defaultdict
 
+import numpy as np
 from tqdm import tqdm
 
 import metagrad.module as nn
+from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
+from metagrad.loss import CrossEntropyLoss
+from metagrad.optim import SGD
 from metagrad.tensor import Tensor
 
 BOS_TOKEN = "<bos>"  # 句子开始标记
@@ -12,14 +16,10 @@ PAD_TOKEN = "<pad>"  # 填充标记
 UNK_TOKEN = "<unk>"  # 未知词标记
 
 
-def load_corpus():
-    pass
-
-
 class Vocabulary:
     def __init__(self, tokens=None):
-        self.idx_to_token = list()
-        self.token_to_idx = dict()
+        self._idx_to_token = list()
+        self._token_to_idx = dict()
 
         # 如果传入了去重单词列表
         if tokens is not None:
@@ -27,10 +27,10 @@ class Vocabulary:
                 tokens = tokens + [UNK_TOKEN]
             # 构建id2word和word2id
             for token in tokens:
-                self.idx_to_token.append(token)
-                self.token_to_idx[token] = len(self.idx_to_token) - 1
+                self._idx_to_token.append(token)
+                self._token_to_idx[token] = len(self._idx_to_token) - 1
 
-            self.unk = self.token_to_idx[UNK_TOKEN]
+            self.unk = self._token_to_idx[UNK_TOKEN]
 
     @classmethod
     def build(cls, text, min_freq=2, reserved_tokens=None):
@@ -38,7 +38,7 @@ class Vocabulary:
         构建词表
         :param text: 处理好的(分词、去掉特殊符号等)text
         :param min_freq: 最小单词频率
-        :param reserved_tokens: 保留的标记
+        :param reserved_tokens: 预先保留的标记
         :return:
         '''
         token_freqs = defaultdict(int)
@@ -52,17 +52,17 @@ class Vocabulary:
         return cls(unique_tokens)
 
     def __len__(self):
-        return len(self.idx_to_token)
+        return len(self._idx_to_token)
 
     def __getitem__(self, token):
         '''得到token对应的id'''
-        return self.token_to_idx.get(token, self.unk)
+        return self._token_to_idx.get(token, self.unk)
 
     def to_ids(self, tokens):
         return [self[token] for token in tokens]
 
     def to_tokens(self, indices):
-        return [self.idx_to_token[index] for index in indices]
+        return [self._idx_to_token[index] for index in indices]
 
 
 class CBOWDataset(Dataset):
@@ -78,10 +78,12 @@ class CBOWDataset(Dataset):
                 continue
             for i in range(window_size, len(sentence) - window_size):
                 # 分别取i左右window_size个单词
-                context = sentence[i - window_size:i] + sentence[i + 1:i + window_size]
+                context = sentence[i - window_size:i] + sentence[i + 1:i + window_size + 1]
                 # 目标词：当前词
                 target = sentence[i]
-                self.data.append((context, target))
+                self.data.append((context, np.eye(len(vocab), dtype='uint8')[target]))
+
+        self.data = np.asarray(self.data)
 
     def __len__(self):
         return len(self.data)
@@ -96,8 +98,8 @@ class CBOWDataset(Dataset):
         :param examples:
         :return:
         '''
-        inputs = Tensor([ex[0] for ex in examples])
-        targets = Tensor([ex[1] for ex in examples])
+        inputs = Tensor([ex[0] for ex in examples], dtype=np.int)
+        targets = Tensor([ex[1] for ex in examples], dtype=np.int)
         return inputs, targets
 
 
@@ -112,17 +114,60 @@ class CBOWModel(nn.Module):
         # 得到所有上下文嵌入向量
         embeds = self.embeddings(inputs)
         # 计算均值，得到隐藏层向量，作为目标词的上下文表示
-        hidden = embeds.mean(axis=1, keepdims=True)
+        hidden = embeds.mean(axis=1)
         output = self.output(hidden)
         return output
 
 
+def load_corpus(corpus_path):
+    '''
+    从corpus_path中读取预料
+    :param corpus_path: 处理好的文本路径
+    :return:
+    '''
+    with open(corpus_path, 'r', encoding='utf8') as f:
+        lines = f.readlines()
+    # 去掉空行，将文本转换为单词列表
+    text = [[word for word in sentence.split(' ')] for sentence in lines if len(sentence) != 0]
+    # 构建词典
+    vocab = Vocabulary.build(text, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
+    print(f'vocab size:{len(vocab)}')
+    # 构建语料:将单词转换为ID
+    corpus = [vocab.to_ids(sentence) for sentence in text]
 
-# 先试简单的语料库
-embedding_dim = 64
-window_size = 2
-hidden_dim = 128
-batch_size = 5
-num_epoch = 10
+    return corpus, vocab
 
 
+if __name__ == '__main__':
+    embedding_dim = 64
+    window_size = 2
+    hidden_dim = 128
+    batch_size = 1024
+    num_epoch = 10
+
+    corpus, vocab = load_corpus('data/xiyouji.txt')
+    # 构建数据集
+    dataset = CBOWDataset(corpus, vocab, window_size=window_size)
+    data_loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        collate_fn=dataset.collate_fn,
+        shuffle=True
+    )
+
+    loss_func = CrossEntropyLoss()
+    # 构建模型
+    model = CBOWModel(len(vocab), embedding_dim)
+    optimizer = SGD(model.parameters())
+
+    for epoch in range(num_epoch):
+        total_loss = 0
+        for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
+            inputs, targets = batch
+            optimizer.zero_grad()
+            output = model(inputs)
+            loss = loss_func(output, targets)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+        print(f'Loss: {total_loss:.2f}')
