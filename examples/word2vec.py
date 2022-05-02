@@ -8,7 +8,7 @@ from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
 from metagrad.loss import CrossEntropyLoss
 from metagrad.optim import SGD
-from metagrad.tensor import Tensor
+from metagrad.tensor import Tensor, debug_mode
 
 BOS_TOKEN = "<bos>"  # 句子开始标记
 EOS_TOKEN = "<eos>"  # 句子结束标记
@@ -81,7 +81,7 @@ class CBOWDataset(Dataset):
                 context = sentence[i - window_size:i] + sentence[i + 1:i + window_size + 1]
                 # 目标词：当前词
                 target = sentence[i]
-                self.data.append((context, np.eye(len(vocab), dtype='uint8')[target]))
+                self.data.append((context, target))
 
         self.data = np.asarray(self.data)
 
@@ -159,7 +159,6 @@ if __name__ == '__main__':
     # 构建模型
     model = CBOWModel(len(vocab), embedding_dim)
     optimizer = SGD(model.parameters())
-
     for epoch in range(num_epoch):
         total_loss = 0
         for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):

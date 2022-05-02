@@ -2,6 +2,7 @@ import contextlib
 import importlib
 import inspect
 import time
+from numbers import Number
 from typing import Union, Tuple, Any
 
 import numpy as np
@@ -15,23 +16,27 @@ np.set_printoptions(precision=4)
 np.set_printoptions(suppress=True)
 
 # 可以转换为Numpy数组的类型
-Arrayable = Union[float, list, np.ndarray]
+Arrayable = Union[Number, np.ndarray]
 
 
-def ensure_array(arrayable: Arrayable, dtype=_type) -> np.ndarray:
+def ensure_array(arrayable: Arrayable, dtype=None) -> np.ndarray:
     """
     :param arrayable:
     :param dtype:
     :return:
     """
-    if isinstance(arrayable, (np.ndarray, slice, tuple)):
-        # 如果本身是ndarray或slice或tuple(元组里面都是slice)
+    if isinstance(arrayable, Number):
+        if dtype is None:
+            dtype = type(arrayable)
+        return np.array(arrayable, dtype=dtype)
+    elif isinstance(arrayable, list):
+        # 让np自己判断数据类型
+        return np.array(arrayable, dtype=dtype)
+    else:
         return arrayable
-    # 转换为Numpy数组
-    return np.array(arrayable, dtype=dtype)
 
 
-Tensorable = Union["Tensor", float, np.ndarray]
+Tensorable = Union["Tensor", Number, np.ndarray]
 
 
 def ensure_tensor(tensoralbe: Tensorable) -> "Tensor":
@@ -98,13 +103,13 @@ class OpWrapper:
 
 
 class Tensor:
-    def __init__(self, data: Arrayable, requires_grad: bool = False, dtype=_type) -> None:
+    def __init__(self, data: Arrayable, requires_grad: bool = False, dtype=None) -> None:
         '''
         初始化Tensor对象
         Args:
             data: 数据
             requires_grad: 是否需要计算梯度
-            dtype: 数据类型，默认为float
+            dtype: 数据类型，默认为None
         '''
 
         # data 是 np.ndarray
@@ -208,7 +213,7 @@ class Tensor:
 
     # ****创造帮助函数****
     @classmethod
-    def empty(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
+    def empty(cls, *shape, dtype=_type, **kwargs):
         return cls(np.empty(*shape, dtype=dtype), **kwargs)
 
     @classmethod
@@ -228,7 +233,7 @@ class Tensor:
         return cls(np.random.randn(*shape).astype(dtype), **kwargs)
 
     @classmethod
-    def arange(cls, stop, start=0, step=1, dtype=_type, **kwargs) -> "Tensor":
+    def arange(cls, stop, start=0, step=1, dtype=int, **kwargs) -> "Tensor":
         stop, start = start, stop
         return cls(np.arange(start=start, stop=stop, step=step).astype(dtype), **kwargs)
 
@@ -286,9 +291,8 @@ class Tensor:
         Returns:
 
         '''
-        # 如果不需要计算梯度，则返回，而不是报错
-        if not self.requires_grad:
-            return
+        # 只能在requires_grad=True的Tensor上调用此方法
+        assert self.requires_grad, "called backward on tensor do not require grad"
 
         if not Config.backprop:
             return

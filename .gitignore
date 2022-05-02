@@ -57,6 +57,8 @@ examples/data
 examples/*.png
 examples/*.gif
 
+examples/data
+
 # Translations
 *.mo
 *.pot
