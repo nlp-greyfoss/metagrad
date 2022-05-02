@@ -218,15 +218,15 @@ class Tensor:
         return cls(np.empty(*shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def zeros(cls, *shape, dtype=np.int, **kwargs) -> "Tensor":
+    def zeros(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
         return cls(np.zeros(shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def ones(cls, *shape, dtype=np.int, **kwargs) -> "Tensor":
+    def ones(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
         return cls(np.ones(shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def ones_like(cls, t: "Tensor", dtype=np.int, **kwargs) -> "Tensor":
+    def ones_like(cls, t: "Tensor", dtype=_type, **kwargs) -> "Tensor":
         return cls(np.ones(t.shape, dtype=dtype), **kwargs)
 
     @classmethod
@@ -234,16 +234,16 @@ class Tensor:
         return cls(np.random.randn(*shape).astype(dtype), **kwargs)
 
     @classmethod
-    def arange(cls, stop, start=0, step=1, dtype=np.int, **kwargs) -> "Tensor":
+    def arange(cls, stop, start=0, step=1, dtype=int, **kwargs) -> "Tensor":
         stop, start = start, stop
-        return cls(np.arange(start=start, stop=stop, step=step).astype(_type), **kwargs)
+        return cls(np.arange(start=start, stop=stop, step=step).astype(dtype), **kwargs)
 
     @classmethod
     def uniform(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
         return cls((np.random.uniform(-1., 1., size=shape) / np.sqrt(np.prod(shape))).astype(dtype), **kwargs)
 
     @classmethod
-    def eye(cls, dim, dtype=np.int, **kwargs) -> "Tensor":
+    def eye(cls, dim, dtype=_type, **kwargs) -> "Tensor":
         return cls(np.eye(dim).astype(dtype), **kwargs)
 
     # 切片操作
