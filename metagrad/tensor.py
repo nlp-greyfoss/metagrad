@@ -22,6 +22,7 @@ Arrayable = Union[Number, np.ndarray]
 def ensure_array(arrayable: Arrayable, dtype=None) -> np.ndarray:
     """
     :param arrayable:
+    :param dtype:
     :return:
     """
     if isinstance(arrayable, Number):
