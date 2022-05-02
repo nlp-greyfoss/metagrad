@@ -69,17 +69,8 @@ class NLLLoss(_Loss):
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         '''
 
-        :param input: 概率的对数
-        :param target: 类别one-hot向量
+        :param input: 对数概率 即 log_softmax
+        :param target: 类别索引 或 one-hot向量
         :return:
         '''
-        errors = - target * input
-
-        if self.reduction == "mean":
-            loss = errors.sum() / len(input)
-        elif self.reduction == "sum":
-            loss = errors.sum()
-        else:
-            loss = errors
-
-        return loss
+        return F.nll_loss(input, target, self.reduction)

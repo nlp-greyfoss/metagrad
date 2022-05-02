@@ -99,6 +99,34 @@ def log_softmax(x: Tensor, axis=-1):
     return x - logsumexp(x, axis)
 
 
+def _reduction(errors: Tensor, method: str) -> Tensor:
+    if method == "mean":
+        loss = errors.sum() / errors.shape[0]
+    elif method == "sum":
+        loss = errors.sum()
+    else:
+        loss = errors
+
+    return loss
+
+
+def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
+    '''
+    负对数似然损失
+    :param input: 对数概率 即 log_softmax
+    :param target:  类别索引 或 one-hot向量
+    :param reduction:
+    :return:
+    '''
+    # 如果target是ont-hot向量
+    if input.ndim == target.ndim and input.shape == target.shape:
+        errors = - target * input
+    else:
+        # 如果target是类别索引
+        errors = -input[range(target.shape[0]), target.numpy()]
+    return _reduction(errors, reduction)
+
+
 def binary_cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
     '''
 
@@ -111,36 +139,21 @@ def binary_cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean")
     neg_abs = - abs(input)
     errors = input.clip(x_min=0) - input * target + (1 + neg_abs.exp()).log()
 
-    if reduction == "mean":
-        loss = errors.mean()
-    elif reduction == "sum":
-        loss = errors.sum()
-    else:
-        loss = errors
-    return loss
+    return _reduction(errors, reduction)
 
 
 def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
     '''
 
     :param input: logits
-    :param target: 真实标签one-hot向量
+    :param target: 真实标签one-hot向量 或 类别索引
     :param reduction:
     :return:
     '''
-
-    axis = -1
-
-    errors = target.sum(axis=axis, keepdims=True) * logsumexp(input, axis=axis) - (target * input).sum(axis=axis,
-                                                                                                       keepdims=True)
-
-    if reduction == "mean":
-        loss = errors.mean()
-    elif reduction == "sum":
-        loss = errors.sum()
-    else:
-        loss = errors
-    return loss
+    # 先计算logsoftmax
+    log_y = log_softmax(input)
+    # 基于nll实现交叉熵损失
+    return nll_loss(log_y, target, reduction)
 
 
 def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
@@ -151,7 +164,7 @@ def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
     """
     if training:
         # 丢弃掩码 1代表保留，0代表丢弃 以1-p的概率生成输出为1伯努利分布，做了input的元素个数这么多次实验
-        mask = np.random.binomial(1, 1-p, size=input.shape)
+        mask = np.random.binomial(1, 1 - p, size=input.shape)
         # 让输入乘上这个与之同shape的丢弃掩码，然后除以1-p进行缩放，这样在测试时，可以原样输出
         return input * Tensor(mask, requires_grad=False) / (1 - p)
     else:
