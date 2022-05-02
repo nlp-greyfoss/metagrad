@@ -1,12 +1,11 @@
 import contextlib
 import importlib
 import inspect
-from collections import Sequence
+import time
 from numbers import Number
 from typing import Union, Tuple, Any
 
 import numpy as np
-import time
 
 # 默认数据类型
 _type = np.float32
@@ -110,7 +109,7 @@ class Tensor:
         Args:
             data: 数据
             requires_grad: 是否需要计算梯度
-            dtype: 数据类型，默认为int
+            dtype: 数据类型，默认为None
         '''
 
         # data 是 np.ndarray
