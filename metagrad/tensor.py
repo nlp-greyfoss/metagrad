@@ -1,6 +1,8 @@
 import contextlib
 import importlib
 import inspect
+from collections import Sequence
+from numbers import Number
 from typing import Union, Tuple, Any
 
 import numpy as np
@@ -15,22 +17,27 @@ np.set_printoptions(precision=4)
 np.set_printoptions(suppress=True)
 
 # 可以转换为Numpy数组的类型
-Arrayable = Union[float, list, np.ndarray]
+Arrayable = Union[Number, np.ndarray]
 
 
-def ensure_array(arrayable: Arrayable) -> np.ndarray:
+def ensure_array(arrayable: Arrayable, dtype=None) -> np.ndarray:
     """
     :param arrayable:
     :return:
     """
-    if isinstance(arrayable, (np.ndarray, slice, tuple)):
-        # 如果本身是ndarray或slice或tuple(元组里面都是slice)
+    if isinstance(arrayable, Number):
+        if dtype is None:
+            dtype = type(arrayable)
+        return np.array(arrayable, dtype=dtype)
+    elif isinstance(arrayable, list):
+        if dtype is None:
+            dtype = _type
+        return np.array(arrayable, dtype=dtype)
+    else:
         return arrayable
-    # 转换为Numpy数组
-    return np.array(arrayable, dtype=_type)
 
 
-Tensorable = Union["Tensor", float, np.ndarray]
+Tensorable = Union["Tensor", Number, np.ndarray]
 
 
 def ensure_tensor(tensoralbe: Tensorable) -> "Tensor":
@@ -97,16 +104,17 @@ class OpWrapper:
 
 
 class Tensor:
-    def __init__(self, data: Arrayable, requires_grad: bool = False) -> None:
+    def __init__(self, data: Arrayable, requires_grad: bool = False, dtype=None) -> None:
         '''
         初始化Tensor对象
         Args:
             data: 数据
             requires_grad: 是否需要计算梯度
+            dtype: 数据类型，默认为int
         '''
 
         # data 是 np.ndarray
-        self._data = ensure_array(data)
+        self._data = ensure_array(data, dtype)
 
         self.requires_grad = requires_grad
         # 保存该Tensor的梯度
@@ -206,33 +214,37 @@ class Tensor:
 
     # ****创造帮助函数****
     @classmethod
-    def zeros(cls, *shape, **kwargs) -> "Tensor":
-        return cls(np.zeros(shape, dtype=_type), **kwargs)
+    def empty(cls, *shape, dtype=_type, **kwargs):
+        return cls(np.empty(*shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def ones(cls, *shape, **kwargs) -> "Tensor":
-        return cls(np.ones(shape, dtype=_type), **kwargs)
+    def zeros(cls, *shape, dtype=np.int, **kwargs) -> "Tensor":
+        return cls(np.zeros(shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def ones_like(cls, t: "Tensor", **kwargs) -> "Tensor":
-        return cls(np.ones(t.shape, dtype=_type), **kwargs)
+    def ones(cls, *shape, dtype=np.int, **kwargs) -> "Tensor":
+        return cls(np.ones(shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def randn(cls, *shape, **kwargs) -> "Tensor":
-        return cls(np.random.randn(*shape).astype(_type), **kwargs)
+    def ones_like(cls, t: "Tensor", dtype=np.int, **kwargs) -> "Tensor":
+        return cls(np.ones(t.shape, dtype=dtype), **kwargs)
 
     @classmethod
-    def arange(cls, stop, start=0, step=1, **kwargs) -> "Tensor":
+    def randn(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
+        return cls(np.random.randn(*shape).astype(dtype), **kwargs)
+
+    @classmethod
+    def arange(cls, stop, start=0, step=1, dtype=np.int, **kwargs) -> "Tensor":
         stop, start = start, stop
         return cls(np.arange(start=start, stop=stop, step=step).astype(_type), **kwargs)
 
     @classmethod
-    def uniform(cls, *shape, **kwargs) -> "Tensor":
-        return cls((np.random.uniform(-1., 1., size=shape) / np.sqrt(np.prod(shape))).astype(_type), **kwargs)
+    def uniform(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
+        return cls((np.random.uniform(-1., 1., size=shape) / np.sqrt(np.prod(shape))).astype(dtype), **kwargs)
 
     @classmethod
-    def eye(cls, dim, **kwargs) -> "Tensor":
-        return cls(np.eye(dim).astype(_type), **kwargs)
+    def eye(cls, dim, dtype=np.int, **kwargs) -> "Tensor":
+        return cls(np.eye(dim).astype(dtype), **kwargs)
 
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
@@ -317,15 +329,6 @@ class Tensor:
                     # grad Tensor
                     gt = Tensor(g)
                     t._grad = gt if t.grad is None else t.grad + gt
-
-    # ****帮助函数****
-    @classmethod
-    def empty(cls, *shape, **kwargs):
-        return cls(np.empty(*shape, dtype=_type), **kwargs)
-
-    @classmethod
-    def zeros(cls, *shape, **kwargs):
-        return cls(np.zeros(shape, dtype=_type), **kwargs)
 
 
 def register(name, fxn):

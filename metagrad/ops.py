@@ -264,22 +264,17 @@ class Abs(Function):
 
 # ****变形和切片****
 class Slice(Function):
-    def forward(ctx, x: ndarray, idxs: Any) -> ndarray:
+    def forward(ctx, x: ndarray, slices: Any) -> ndarray:
         '''
-        z = x[idxs]
+        z = x[slices]
         '''
-        # 如果传入[1:3]，变成切片slice
-        # 如果idxs传入单个索引，会被看成是整数，所以这里转换回来
-        if isinstance(idxs, np.ndarray) and idxs.shape == ():
-            idxs = int(idxs.item())
-
-        ctx.save_for_backward(x.shape, idxs)
-        return x[idxs]
+        ctx.save_for_backward(x.shape, slices)
+        return x[slices]
 
     def backward(ctx, grad) -> Tuple[ndarray, None]:
-        x_shape, idxs = ctx.saved_tensors
+        x_shape, slices = ctx.saved_tensors
         bigger_grad = np.zeros(x_shape, dtype=grad.dtype)
-        bigger_grad[idxs] = grad
+        np.add.at(bigger_grad, slices, grad)
 
         return bigger_grad, None
 
