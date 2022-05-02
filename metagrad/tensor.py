@@ -29,8 +29,7 @@ def ensure_array(arrayable: Arrayable, dtype=None) -> np.ndarray:
             dtype = type(arrayable)
         return np.array(arrayable, dtype=dtype)
     elif isinstance(arrayable, list):
-        if dtype is None:
-            dtype = _type
+        # 让np自己判断数据类型
         return np.array(arrayable, dtype=dtype)
     else:
         return arrayable
