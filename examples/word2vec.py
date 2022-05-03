@@ -9,11 +9,14 @@ from metagrad.dataset import Dataset
 from metagrad.loss import CrossEntropyLoss
 from metagrad.optim import SGD
 from metagrad.tensor import Tensor, debug_mode
+from metagrad.init import uniform_
 
 BOS_TOKEN = "<bos>"  # 句子开始标记
 EOS_TOKEN = "<eos>"  # 句子结束标记
 PAD_TOKEN = "<pad>"  # 填充标记
 UNK_TOKEN = "<unk>"  # 未知词标记
+
+WEIGHT_INIT_RANGE = 0.1
 
 
 class Vocabulary:
@@ -98,8 +101,8 @@ class CBOWDataset(Dataset):
         :param examples:
         :return:
         '''
-        inputs = Tensor([ex[0] for ex in examples], dtype=np.int)
-        targets = Tensor([ex[1] for ex in examples], dtype=np.int)
+        inputs = Tensor([ex[0] for ex in examples])
+        targets = Tensor([ex[1] for ex in examples])
         return inputs, targets
 
 
@@ -107,6 +110,7 @@ class CBOWModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
         # 词向量层，即权重矩阵W
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
+        uniform_(self.embeddings.weight, -WEIGHT_INIT_RANGE, WEIGHT_INIT_RANGE)
         # 输出层，包含权重矩阵W'
         self.output = nn.Linear(embedding_dim, vocab_size, bias=False)
 
@@ -142,7 +146,7 @@ if __name__ == '__main__':
     embedding_dim = 64
     window_size = 2
     hidden_dim = 128
-    batch_size = 1024
+    batch_size = 2048
     num_epoch = 10
 
     corpus, vocab = load_corpus('data/xiyouji.txt')
@@ -158,7 +162,7 @@ if __name__ == '__main__':
     loss_func = CrossEntropyLoss()
     # 构建模型
     model = CBOWModel(len(vocab), embedding_dim)
-    optimizer = SGD(model.parameters())
+    optimizer = SGD(model.parameters(), lr=1)
     for epoch in range(num_epoch):
         total_loss = 0
         for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
@@ -169,6 +173,5 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
-            
-        print(f'Loss: {total_loss:.2f}')
+
         print(f'Loss: {total_loss:.2f}')

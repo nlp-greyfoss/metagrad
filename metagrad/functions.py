@@ -191,3 +191,7 @@ class Embedding(Function):
 
 def embedding(weight: Tensor, indices: Tensor) -> Tensor:
     return Embedding.apply(Embedding, weight, indices)
+
+
+def cos_similarty(u, v):
+    pass

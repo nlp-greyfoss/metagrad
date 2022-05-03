@@ -52,12 +52,12 @@ coverage.xml
 .pytest_cache/
 
 
-examples/data
 # image in examples
 examples/*.png
 examples/*.gif
 
 examples/data
+examples/tests
 
 # Translations
 *.mo

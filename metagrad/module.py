@@ -1,4 +1,5 @@
 import inspect
+import pickle
 from typing import List, Optional
 
 import metagrad.functions as F
@@ -47,6 +48,14 @@ class Module:
         :return:
         """
         return self.train(False)
+
+    def save(self, path='model.pt'):
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
+
+    def load(self, path='model.pt'):
+        with open(path, 'rb') as f:
+            return pickle.load(f)
 
 
 class Linear(Module):
@@ -110,7 +119,7 @@ class Embedding(Module):
             self.weight = Parameter(_weight)
 
     def reset_parameters(self) -> None:
-        init.normal_(self.weight)
+        init.uniform_(self.weight)
 
     def forward(self, input: Tensor) -> Tensor:
         return F.embedding(self.weight, input)
