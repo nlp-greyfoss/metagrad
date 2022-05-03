@@ -8,35 +8,45 @@ from typing import Union, Tuple, Any
 import numpy as np
 
 # 默认数据类型
-_type = np.float32
+from metagrad.cuda import Device, get_device_from_array, get_device
+
+_type = float
 
 # 设置显示精度
 np.set_printoptions(precision=4)
 # 抑制小数的科学计数法显示
 np.set_printoptions(suppress=True)
 
-# 可以转换为Numpy数组的类型
-Arrayable = Union[Number, np.ndarray]
+NdArray = Union['numpy.ndarray', 'cuda.ndarray']
+
+# 可以转换为数组的类型
+Arrayable = Union[Number, NdArray]
 
 
-def ensure_array(arrayable: Arrayable, dtype=None) -> np.ndarray:
+def ensure_array(arrayable: Arrayable, dtype=None, device=None) -> NdArray:
     """
     :param arrayable:
     :param dtype:
     :return:
     """
+
+    if device is not None:
+        xp = device.xp
+    else:
+        xp = np
+
     if isinstance(arrayable, Number):
         if dtype is None:
             dtype = type(arrayable)
-        return np.array(arrayable, dtype=dtype)
+        return xp.array(arrayable, dtype=dtype)
     elif isinstance(arrayable, list):
-        # 让np自己判断数据类型
-        return np.array(arrayable, dtype=dtype)
+        # 让xp自己判断数据类型
+        return xp.array(arrayable, dtype=dtype)
     else:
         return arrayable
 
 
-Tensorable = Union["Tensor", Number, np.ndarray]
+Tensorable = Union["Tensor", Number, NdArray]
 
 
 def ensure_tensor(tensoralbe: Tensorable) -> "Tensor":
@@ -103,17 +113,20 @@ class OpWrapper:
 
 
 class Tensor:
-    def __init__(self, data: Arrayable, requires_grad: bool = False, dtype=None) -> None:
+    def __init__(self, data: Arrayable, requires_grad: bool = False, dtype=None, device: Device = None) -> None:
         '''
         初始化Tensor对象
         Args:
             data: 数据
             requires_grad: 是否需要计算梯度
             dtype: 数据类型，默认为None
+            device: 设备类型 CpuDevice 或 GpuDevice
         '''
 
-        # data 是 np.ndarray
-        self._data = ensure_array(data, dtype)
+        self._device = device
+
+        # data 是 NdArray
+        self._data = ensure_array(data, dtype, device)
 
         self.requires_grad = requires_grad
         # 保存该Tensor的梯度
@@ -130,11 +143,11 @@ class Tensor:
         return self._grad
 
     @property
-    def data(self) -> np.ndarray:
+    def data(self) -> NdArray:
         return self._data
 
     @data.setter
-    def data(self, new_data: np.ndarray) -> None:
+    def data(self, new_data: NdArray) -> None:
         self._data = ensure_array(new_data)
         # 重新赋值后就没有梯度了
         self._grad = None
@@ -154,6 +167,20 @@ class Tensor:
     def dtype(self) -> np.dtype:
         '''返回Tensor中数据的类型'''
         return self.data.dtype
+
+    @property
+    def device(self):
+        if self._device is None:
+            self._device = get_device_from_array(self.data)
+        return self._device
+
+    def to(self, device):
+        self._device = get_device(device)
+        # 如果设备一致了
+        if get_device_from_array(self._data) == device:
+            return
+        # 转移到设备上
+        self.data = device.transfer(self.data)
 
     def zero_grad(self) -> None:
         '''
@@ -193,7 +220,7 @@ class Tensor:
         '''
         return np.size(self.data, dim)
 
-    def numpy(self) -> np.ndarray:
+    def numpy(self) -> NdArray:
         """转换为Numpy数组"""
         return self.data
 
