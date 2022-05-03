@@ -25,7 +25,7 @@ def test_binary_cross_entropy():
     to.backward()
 
     assert np.allclose(mx.grad.data,
-                       tx.grad.array())
+                       tx.grad.data)
 
 
 def test_cross_entropy():
