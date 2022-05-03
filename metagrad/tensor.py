@@ -7,8 +7,16 @@ from typing import Union, Tuple, Any
 
 import numpy as np
 
-# 默认数据类型
-from metagrad.cuda import Device, get_device_from_array, get_device
+from metagrad.cuda import (
+    Device,
+    get_device_from_array,
+    get_device,
+    CpuDevice,
+    GpuDevice,
+    check_cuda_available,
+    get_gpu_device_or_current,
+    using_device
+)
 
 _type = float
 
@@ -17,7 +25,7 @@ np.set_printoptions(precision=4)
 # 抑制小数的科学计数法显示
 np.set_printoptions(suppress=True)
 
-NdArray = Union['numpy.ndarray', 'cuda.ndarray']
+NdArray = Union['np.ndarray', 'cuda.ndarray']
 
 # 可以转换为数组的类型
 Arrayable = Union[Number, NdArray]
@@ -49,13 +57,13 @@ def ensure_array(arrayable: Arrayable, dtype=None, device=None) -> NdArray:
 Tensorable = Union["Tensor", Number, NdArray]
 
 
-def ensure_tensor(tensoralbe: Tensorable) -> "Tensor":
+def ensure_tensor(tensoralbe: Tensorable, device=None) -> "Tensor":
     '''
     确保是Tensor对象
     '''
     if isinstance(tensoralbe, Tensor):
         return tensoralbe
-    return Tensor(tensoralbe)
+    return Tensor(tensoralbe, device=device)
 
 
 class Config:
@@ -123,10 +131,13 @@ class Tensor:
             device: 设备类型 CpuDevice 或 GpuDevice
         '''
 
+        if device is None:
+            device = get_device_from_array(data)
+
         self._device = device
 
         # data 是 NdArray
-        self._data = ensure_array(data, dtype, device)
+        self._data = ensure_array(data, dtype, self._device)
 
         self.requires_grad = requires_grad
         # 保存该Tensor的梯度
@@ -148,7 +159,7 @@ class Tensor:
 
     @data.setter
     def data(self, new_data: NdArray) -> None:
-        self._data = ensure_array(new_data)
+        self._data = ensure_array(new_data, self.device)
         # 重新赋值后就没有梯度了
         self._grad = None
 
@@ -164,15 +175,19 @@ class Tensor:
         return self.data.ndim
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self):
         '''返回Tensor中数据的类型'''
         return self.data.dtype
 
     @property
     def device(self):
-        if self._device is None:
-            self._device = get_device_from_array(self.data)
         return self._device
+
+    @property
+    def xp(self):
+        '''返回当前tensor基于的numpy或cupy'''
+        device = self.device
+        return np if device is None else device.xp
 
     def to(self, device):
         self._device = get_device(device)
@@ -180,7 +195,19 @@ class Tensor:
         if get_device_from_array(self._data) == device:
             return
         # 转移到设备上
-        self.data = device.transfer(self.data)
+        self._data = device.transfer(self.data)
+
+        if self._grad is not None:
+            self._grad = device.transfer(self._grad)
+
+    def to_cpu(self):
+        '''拷贝数据和梯度到CPU'''
+        self.to(CpuDevice())
+
+    def to_gpu(self, device=None):
+        '''拷贝数据和梯度到指定的GPU'''
+        check_cuda_available()
+        self.to(get_gpu_device_or_current(device))
 
     def zero_grad(self) -> None:
         '''
@@ -188,7 +215,8 @@ class Tensor:
         Returns:
 
         '''
-        self._grad = Tensor(np.zeros_like(self.data, dtype=_type))
+        xp = self.xp
+        self._grad = Tensor(xp.zeros_like(self.data))
 
     def __repr__(self) -> str:
         return f"Tensor({self.data}, requires_grad={self.requires_grad})"
@@ -197,16 +225,16 @@ class Tensor:
         return len(self.data)
 
     def __gt__(self, other):
-        other = ensure_tensor(other)
+        other = ensure_tensor(other, self.device)
         return self.data > other.data
 
     def __lt__(self, other):
-        other = ensure_tensor(other)
+        other = ensure_tensor(other, self.device)
         return self.data < other.data
 
     def assign(self, x) -> "Tensor":
         '''将x的值赋予当前Tensor'''
-        x = ensure_tensor(x)
+        x = ensure_tensor(x, self.device)
         # 维度必须一致
         assert x.shape == self.shape
         self.data = x.data
@@ -218,59 +246,67 @@ class Tensor:
         如果dim不为None，返回该维度上的元素个数
         Returns:
         '''
-        return np.size(self.data, dim)
 
-    def numpy(self) -> NdArray:
-        """转换为Numpy数组"""
+        return self.xp.size(self.data, dim)
+
+    def array(self) -> NdArray:
+        """转换为Numpy或Cupy数组"""
         return self.data
 
     def item(self) -> Any:
-        return self.numpy().item()
+        return self.array().item()
 
     def squeeze(self) -> Any:
-        return self.numpy().squeeze()
+        return self.array().squeeze()
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
-        self.data = np.random.uniform(low, high, size=self.shape)
-        return self
+        with using_device(self.device):
+            xp = self.device.xp
+            self.data = xp.random.uniform(low, high, size=self.shape)
+            return self
 
     def normal_(self, mean: float = 0.0, std: float = 1.0) -> "Tensor":
-        self.data = np.random.normal(mean, std, size=self.shape)
-        return self
+        with using_device(self.device):
+            xp = self.device.xp
+            self.data = xp.random.normal(mean, std, size=self.shape)
+            return self
 
     # ****创造帮助函数****
     @classmethod
-    def empty(cls, *shape, dtype=_type, **kwargs):
-        return cls(np.empty(*shape, dtype=dtype), **kwargs)
+    def empty(cls, *shape, dtype=_type, device=CpuDevice(), **kwargs):
+        xp = device.xp
+        return cls(xp.empty(*shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def zeros(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
-        return cls(np.zeros(shape, dtype=dtype), **kwargs)
+    def zeros(cls, *shape, dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
+        xp = device.xp
+        return cls(xp.zeros(shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def ones(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
-        return cls(np.ones(shape, dtype=dtype), **kwargs)
+    def ones(cls, *shape, dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
+        xp = device.xp
+        return cls(xp.ones(shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def ones_like(cls, t: "Tensor", dtype=_type, **kwargs) -> "Tensor":
-        return cls(np.ones(t.shape, dtype=dtype), **kwargs)
+    def ones_like(cls, t: "Tensor", dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
+        xp = device.xp
+        return cls(xp.ones(t.shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def randn(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
-        return cls(np.random.randn(*shape).astype(dtype), **kwargs)
+    def randn(cls, *shape, dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
+        xp = device.xp
+        return cls(xp.random.randn(*shape).astype(dtype), device=device, **kwargs)
 
     @classmethod
-    def arange(cls, stop, start=0, step=1, dtype=int, **kwargs) -> "Tensor":
+    def arange(cls, stop, start=0, step=1, dtype=int, device=CpuDevice(), **kwargs) -> "Tensor":
         stop, start = start, stop
-        return cls(np.arange(start=start, stop=stop, step=step).astype(dtype), **kwargs)
+        xp = device.xp
+        return cls(xp.arange(start=start, stop=stop, step=step).astype(dtype), device=device, **kwargs)
 
     @classmethod
-    def uniform(cls, *shape, dtype=_type, **kwargs) -> "Tensor":
-        return cls((np.random.uniform(-1., 1., size=shape) / np.sqrt(np.prod(shape))).astype(dtype), **kwargs)
-
-    @classmethod
-    def eye(cls, dim, dtype=_type, **kwargs) -> "Tensor":
-        return cls(np.eye(dim).astype(dtype), **kwargs)
+    def eye(cls, dim, dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
+        xp = device.xp
+        return cls(xp.eye(dim).astype(dtype), device=device, **kwargs)
 
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
@@ -328,12 +364,12 @@ class Tensor:
         if grad is None:
             if self.shape == ():
                 # 设置梯度值为1，grad本身不需要计算梯度
-                self._grad = Tensor(1)
+                self._grad = Tensor(1, device=self.device)
             else:
                 # 如果当前Tensor得到不是标量，那么grad必须制定
                 raise RuntimeError("grad must be specified for non scalar")
         else:
-            self._grad = ensure_tensor(grad)
+            self._grad = ensure_tensor(grad, device=self.device)
 
         for t in self._rev_topo_sort():
             assert t.grad is not None
@@ -353,14 +389,22 @@ class Tensor:
                     # t.shape要和grad.shape保持一致
                     assert t.shape == g.shape, f"grad shape must match tensor shape in {self._ctx!r}, {g.shape!r} != {t.shape!r}"
                     # grad Tensor
-                    gt = Tensor(g)
+                    gt = Tensor(g, device=self.device)
                     t._grad = gt if t.grad is None else t.grad + gt
 
 
 def register(name, fxn):
     def dispatch(*xs, **kwargs):
+        device = CpuDevice()
+
+        for x in xs:
+            gpu_device = GpuDevice.from_array(x)
+            if gpu_device is not None:
+                device = gpu_device
+                break
         # 把所有的输入都转换为Tensor
-        xs = [ensure_tensor(x) for x in xs]
+
+        xs = [ensure_tensor(x, device) for x in xs]
         # 调用apply方法
         return fxn.apply(fxn, *xs, **kwargs)
 

@@ -19,13 +19,13 @@ def test_binary_cross_entropy():
     to = F.binary_cross_entropy(mx, y)
 
     assert np.allclose(mo.data,
-                       to.numpy())
+                       to.array())
 
     mo.backward()
     to.backward()
 
     assert np.allclose(mx.grad.data,
-                       tx.grad.numpy())
+                       tx.grad.array())
 
 
 def test_cross_entropy():

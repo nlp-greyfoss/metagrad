@@ -72,7 +72,7 @@ if __name__ == '__main__':
             total = 0
             correct = 0
             total += len(y)
-            correct += np.sum(sigmoid(outputs).numpy().round() == y.numpy())
+            correct += np.sum(sigmoid(outputs).array().round() == y.array())
             accuracy = 100 * correct / total
             losses.append(l.item())
 
@@ -83,7 +83,7 @@ if __name__ == '__main__':
 
     print(weight, bias)
 
-    X_numpy = X.numpy()
+    X_numpy = X.array()
     x_values = [np.min(X_numpy[:, 0] - 2), np.max(X_numpy[:, 1] + 2)]
     y_values = - (bias + np.dot(weight[0], x_values)) / weight[1]
 

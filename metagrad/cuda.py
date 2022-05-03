@@ -1,6 +1,19 @@
+from numbers import Number
+
 import numpy
 
-gpu_available = True
+
+class _FakeContext:
+    '''用于CPU的假的上下文，相当于啥也没做'''
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+_fake_context = _FakeContext()
 
 
 class Device:
@@ -22,8 +35,64 @@ class Device:
         '''将array转移到此设备'''
         raise NotImplementedError("Can not call from base class")
 
+    def create_context(self):
+        return _fake_context
+
     def __eq__(self, other):
         raise NotImplementedError("Can not call from base class")
+
+    def __enter__(self):
+        raise NotImplementedError("Can not call from base class")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        raise NotImplementedError("Can not call from base class")
+
+
+gpu_available = True
+
+try:
+    import cupy
+    from cupy import cuda
+    from cupy import ndarray
+    from cupy.cuda import Device as CudaDevice
+
+
+except ImportError:
+    # 当没有安装cupy时
+    gpu_available = False
+
+
+    # 创建一个假的ndarray
+    class ndarray:
+        @property
+        def shape(self):
+            pass
+
+        @property
+        def device(self):
+            pass
+
+        def get(self):
+            pass
+
+        def set(self, arr):
+            pass
+
+
+    # 假的CudaDevice
+    class CudaDevice:
+        def __init__(self, device=None):
+            pass
+
+        def __enter__(self):
+            pass
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+
+    # 假的cupy对象
+    cupy = object()
 
 
 class CpuDevice(Device):
@@ -43,26 +112,25 @@ class CpuDevice(Device):
         if isinstance(array, numpy.ndarray):
             return array
 
+        if isinstance(array, (Number, list)):
+            return numpy.asarray(array)
+
         if numpy.isscalar(array):
             return numpy.asarray(array)
-        
 
-try:
-    import cupy
-    from cupy import cuda
+        if isinstance(array, cuda.ndarray):
+            return array.get()
 
-
-except ImportError:
-    gpu_available = False
+        raise TypeError(f'Actual type{type(array)} cannot be converted to numpy.ndarray')
 
 
 class GpuDevice(Device):
     xp = cupy
 
-    def __init__(self, device: cuda.Device):
+    def __init__(self, device: CudaDevice):
         check_cuda_available()
 
-        assert isinstance(device, cuda.Device)
+        assert isinstance(device, CudaDevice)
         super(GpuDevice, self).__init__()
         self.device = device
 
@@ -77,10 +145,37 @@ class GpuDevice(Device):
         return GpuDevice(cuda.Device(device_id))
 
     @staticmethod
-    def from_array(array: cuda.ndarray):
-        if isinstance(array, cuda.ndarray) and array.deivce is not None:
+    def from_array(array: ndarray):
+        if isinstance(array, ndarray) and array.deivce is not None:
             return GpuDevice(array.device)
         return None
+
+    def create_context(self):
+        '''cuda.Device具有上下文管理器'''
+        return cuda.Device(self.device.id)
+
+    def transfer(self, array):
+        if array is None:
+            return None
+        if isinstance(array, (Number, list)):
+            # 将Number或number list转换为numpy数组
+            array = numpy.asarray(array)
+
+        if isinstance(array, cuda.ndarray):
+            if array.device == self.device:
+                return array
+            is_numpy = False
+        elif isinstance(array, numpy.ndarray):
+            is_numpy = True
+        else:
+            raise TypeError(
+                f'Actual type{type(array)} cannot be converted to cupy.ndarray'
+            )
+        with self.device:
+            if is_numpy:
+                return cupy.asarray(array)
+            # 拷贝到此设备
+            return cupy.array(array, copy=True)
 
     def __eq__(self, other):
         return isinstance(other, GpuDevice) and other.device == self.device
@@ -98,7 +193,7 @@ def check_cuda_available():
         raise RuntimeError('Install cupy first.')
 
 
-def get_device(device_desc):
+def get_device(device_desc) -> Device:
     '''
     根据device_desc获取设备(_Deivce)
     Args:
@@ -108,10 +203,13 @@ def get_device(device_desc):
                      cuda:1 -> 指定显卡1
 
     '''
+    if device_desc is None:
+        return CpuDevice()
+
     if isinstance(device_desc, Device):
         return device_desc
 
-    if is_available() and isinstance(device_desc, cuda.Device):
+    if is_available() and isinstance(device_desc, CudaDevice):
         return GpuDevice(device_desc)
 
     if device_desc == 'cpu':
@@ -126,9 +224,30 @@ def get_device(device_desc):
     raise ValueError('Invalid argument.')
 
 
+def using_device(device_desc):
+    '''当前线程设备上下文管理器'''
+    device = get_device(device_desc)
+    return device.create_context()
+
+
 def get_device_from_array(array) -> Device:
     device = GpuDevice.from_array(array)
     if device is not None:
         return device
 
     return CpuDevice()
+
+
+def get_gpu_device_or_current(device):
+    check_cuda_available()
+
+    if device is None:
+        return cuda.Device()
+
+    if isinstance(device, CudaDevice):
+        return device
+
+    if isinstance(device, int):
+        return cuda.Device(device)
+
+    raise ValueError('Invalid argument, only support `cuda.Device` or non-negative int')

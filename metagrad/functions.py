@@ -123,7 +123,7 @@ def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
         errors = - target * input
     else:
         # 如果target是类别索引
-        errors = -input[range(target.shape[0]), target.numpy()]
+        errors = -input[range(target.shape[0]), target.array()]
     return _reduction(errors, reduction)
 
 

@@ -92,7 +92,7 @@ def compute_loss_and_accury(data_loader: DataLoader, model, loss_func, total_num
         # 当前批次的损失
         losses.append(l.item())
 
-        correct += np.sum(sigmoid(y_pred).numpy().round() == y_batch.numpy())
+        correct += np.sum(sigmoid(y_pred).array().round() == y_batch.array())
 
     loss = sum(losses) / total_nums  # 总损失 除以 样本总数
     accuracy = 100 * correct / total_nums
@@ -161,6 +161,6 @@ if __name__ == '__main__':
     with no_grad():
         X_test, y_test = Tensor(X_test), Tensor(y_test)
         outputs = model(X_test)
-        correct = np.sum(sigmoid(outputs).numpy().round() == y_test.numpy())
+        correct = np.sum(sigmoid(outputs).array().round() == y_test.array())
         accuracy = 100 * correct / len(y_test)
         print(f"Test Accuracy:{accuracy}")

@@ -128,7 +128,7 @@ def loss_batch(model: nn.Module, loss_func, X_batch, y_batch, opt: Optimizer = N
 
 
 def accuracy(y_pred, y_true):
-    return np.mean(np.argmax(y_pred.numpy(), axis=1) == y_true.numpy())
+    return np.mean(np.argmax(y_pred.array(), axis=1) == y_true.array())
 
 
 def regression_classification_metric(y_pred, y_true):
@@ -138,7 +138,7 @@ def regression_classification_metric(y_pred, y_true):
     :param y_true:
     :return:
     '''
-    return np.sum(y_pred.numpy().round() == y_true.numpy()) / len(y_pred)
+    return np.sum(y_pred.array().round() == y_true.array()) / len(y_pred)
 
 
 class Accumulator:

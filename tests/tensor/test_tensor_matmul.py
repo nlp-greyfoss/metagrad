@@ -39,5 +39,5 @@ def test_broadcast_matmul():
     tz.backward(tensor(grad))
 
     # 和老大哥 pytorch保持一致就行了
-    assert np.allclose(x.grad.data, tx.grad.numpy())
-    assert np.allclose(y.grad.data, ty.grad.numpy())
+    assert np.allclose(x.grad.data, tx.grad.array())
+    assert np.allclose(y.grad.data, ty.grad.array())

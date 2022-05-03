@@ -56,7 +56,7 @@ def train(train_features, test_features, train_labels, test_labels, num_epochs=4
             animator.add(epoch + 1, (train_loss, test_loss))
 
     animator.show()
-    print('weight:', model.weight.numpy())
+    print('weight:', model.weight.array())
 
 
 # 从多项式特征中选择前4个维度，即1,x,x^2/2!,x^3/3!
