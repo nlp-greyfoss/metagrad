@@ -48,6 +48,26 @@ def test_cross_entropy():
     assert np.allclose(mx.grad.data, tx.grad.data)
 
 
+def test_cross_entropy_class_indices():
+    x = np.array([[0, 1, 2, 3], [4, 0, 2, 1]], np.float32)
+    t = np.array([3, 0])
+
+    mx = Tensor(x, requires_grad=True)
+    mt = Tensor(t)  # 不需要转换为one-hot向量
+
+    tx = torch.tensor(x, dtype=torch.float32, requires_grad=True)
+    tt = torch.LongTensor(t)
+
+    to = torch.nn.functional.cross_entropy(tx, tt)
+    mo = F.cross_entropy(mx, mt)
+    assert mo.item() == to.item()
+
+    mo.backward()
+    to.backward()
+
+    assert np.allclose(mx.grad.data, tx.grad.data)
+
+
 def test_random():
     N, CLS_NUM = 100, 10  # 样本数，类别数
     x = np.random.randn(N, CLS_NUM)
@@ -68,8 +88,3 @@ def test_random():
     to.backward()
 
     assert np.allclose(mx.grad.data, tx.grad.data)
-
-
-
-
-

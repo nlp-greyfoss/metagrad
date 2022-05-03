@@ -169,4 +169,6 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
+            
+        print(f'Loss: {total_loss:.2f}')
         print(f'Loss: {total_loss:.2f}')

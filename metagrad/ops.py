@@ -154,12 +154,20 @@ class Sum(Function):
 class Mean(Function):
     def forward(ctx, x: ndarray, axis=None, keepdims=False) -> ndarray:
         out = x.mean(axis, keepdims=keepdims)
-        ctx.save_for_backward(x.shape, out.shape)
+        ctx.save_for_backward(x.shape, out.shape, axis, keepdims)
         return out
 
     def backward(ctx, grad: ndarray) -> ndarray:
-        x_shape, out_shape = ctx.saved_tensors
+        x_shape, out_shape, axis, keepdims = ctx.saved_tensors
         grad = grad * (np.prod(out_shape) / np.prod(x_shape))
+        ndim = len(x_shape)
+        axis = (axis,) if np.isscalar(axis) else axis
+        if not (ndim == 0 or axis is None or keepdims):
+            actual_axis = [ax if ax > 0 else ax + ndim for ax in axis]
+            shape = list(grad.shape)
+            for ax in sorted(actual_axis):
+                shape.insert(ax, 1)
+            grad = grad.reshape(shape)
         # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
         return np.broadcast_to(grad, x_shape)
 
@@ -264,22 +272,17 @@ class Abs(Function):
 
 # ****变形和切片****
 class Slice(Function):
-    def forward(ctx, x: ndarray, idxs: Any) -> ndarray:
+    def forward(ctx, x: ndarray, slices: Any) -> ndarray:
         '''
-        z = x[idxs]
+        z = x[slices]
         '''
-        # 如果传入[1:3]，变成切片slice
-        # 如果idxs传入单个索引，会被看成是整数，所以这里转换回来
-        if isinstance(idxs, np.ndarray) and idxs.shape == ():
-            idxs = int(idxs.item())
-
-        ctx.save_for_backward(x.shape, idxs)
-        return x[idxs]
+        ctx.save_for_backward(x.shape, slices)
+        return x[slices]
 
     def backward(ctx, grad) -> Tuple[ndarray, None]:
-        x_shape, idxs = ctx.saved_tensors
+        x_shape, slices = ctx.saved_tensors
         bigger_grad = np.zeros(x_shape, dtype=grad.dtype)
-        bigger_grad[idxs] = grad
+        np.add.at(bigger_grad, slices, grad)
 
         return bigger_grad, None
 
