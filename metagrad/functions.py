@@ -3,6 +3,7 @@ from numpy import ndarray
 
 from metagrad.tensor import Tensor, Config
 from metagrad.ops import Function
+from metagrad.cuda import get_array_module
 
 
 # ----激活函数----
@@ -13,7 +14,8 @@ class Relu(Function):
 
     def forward(ctx, x: ndarray) -> ndarray:
         ctx.save_for_backward(x)
-        return np.maximum(x, 0)
+        xp = get_array_module(x)
+        return xp.maximum(x, 0)
 
     def backward(ctx, grad: ndarray) -> ndarray:
         x, = ctx.saved_tensors
@@ -23,7 +25,8 @@ class Relu(Function):
 class LeakyRelu(Function):
     def forward(ctx, x: ndarray, slope: float = 0.01) -> ndarray:
         ctx.save_for_backward(x, slope)
-        return np.maximum(x, 0) + slope * np.minimum(x, 0)
+        xp = get_array_module(x)
+        return xp.maximum(x, 0) + slope * xp.minimum(x, 0)
 
     def backward(ctx, grad: ndarray) -> ndarray:
         x, slope = ctx.saved_tensors
@@ -34,14 +37,15 @@ class LeakyRelu(Function):
 
 class ELU(Function):
     def forward(ctx, x: ndarray, alpha: float = 1) -> ndarray:
-        ctx.save_for_backward(x, alpha)
-        return np.maximum(x, 0) + np.minimum(0, alpha * (np.exp(x) - 1))
+        xp = get_array_module(x)
+        ctx.save_for_backward(x, alpha, xp)
+        return xp.maximum(x, 0) + xp.minimum(0, alpha * (xp.exp(x) - 1))
 
     def backward(ctx, grad: ndarray) -> ndarray:
-        x, alpha = ctx.saved_tensors
-        mask = np.array(x > 0).astype(grad.dtype)  # x > 0 : 1 加上np.array 兼容标量
+        x, alpha, xp = ctx.saved_tensors
+        mask = xp.array(x > 0).astype(grad.dtype)  # x > 0 : 1 加上np.array 兼容标量
         indices = (mask <= 0)
-        mask[indices] = alpha * np.exp(x)[indices]  # x <= 0 :  alpha * exp(x)
+        mask[indices] = alpha * xp.exp(x)[indices]  # x <= 0 :  alpha * exp(x)
         return grad * mask
 
 
@@ -123,7 +127,7 @@ def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
         errors = - target * input
     else:
         # 如果target是类别索引
-        errors = -input[range(target.shape[0]), target.numpy()]
+        errors = -input[range(target.shape[0]), target.array()]
     return _reduction(errors, reduction)
 
 
@@ -164,7 +168,7 @@ def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
     """
     if training:
         # 丢弃掩码 1代表保留，0代表丢弃 以1-p的概率生成输出为1伯努利分布，做了input的元素个数这么多次实验
-        mask = np.random.binomial(1, 1 - p, size=input.shape)
+        mask = input.device.xp.random.binomial(1, 1 - p, size=input.shape)
         # 让输入乘上这个与之同shape的丢弃掩码，然后除以1-p进行缩放，这样在测试时，可以原样输出
         return input * Tensor(mask, requires_grad=False) / (1 - p)
     else:

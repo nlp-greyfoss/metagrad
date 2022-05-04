@@ -85,6 +85,6 @@ if __name__ == '__main__':
 
     # 在测试集上测试
     outputs = model(X_test)
-    correct = np.sum(outputs.numpy().argmax(-1) == y_test.numpy().argmax(-1))
+    correct = np.sum(outputs.array().argmax(-1) == y_test.array().argmax(-1))
     accuracy = 100 * correct / len(y_test)
     print(f"Test Accuracy:{accuracy}")

@@ -2,9 +2,9 @@ import inspect
 from typing import List
 
 import metagrad.functions as F
-from metagrad.paramater import Parameter
-from metagrad.tensor import Tensor
 from metagrad import init
+from metagrad.paramater import Parameter
+from metagrad.tensor import Tensor, no_grad
 
 
 class Module:
@@ -48,6 +48,25 @@ class Module:
         """
         return self.train(False)
 
+    def _apply(self, fn):
+        with no_grad():
+            for name, value in inspect.getmembers(self):
+                if isinstance(value, Parameter):
+                    fn(value)
+                elif isinstance(value, Module):
+                    [fn(p) for p in value.parameters()]
+
+        return self
+
+    def to_gpu(self, device):
+        return self._apply(lambda t: t.to_gpu(device))
+
+    def to_cpu(self):
+        return self._apply(lambda t: t.to_cpu())
+
+    def to(self, device):
+        return self._apply(lambda t: t.to(device))
+
 
 class Linear(Module):
     r"""
@@ -57,6 +76,8 @@ class Linear(Module):
             in_features: 每个输入样本的大小
             out_features: 每个输出样本的大小
             bias: 是否含有偏置，默认 ``True``
+            device: CpuDevice或GpuDevice
+            dtype: np.dtype
         Shape:
             - Input: `(*, H_in)` 其中 `*` 表示任意维度，包括none,这里 `H_{in} = in_features`
             - Output: :math:`(*, H_out)` 除了最后一个维度外，所有维度的形状都与输入相同，这里H_out = out_features`
@@ -65,14 +86,16 @@ class Linear(Module):
             bias:   可学习的偏置，形状 `(out_features)`.
         """
 
-    def __init__(self, in_features: int, out_features: int, bias: bool = True) -> None:
+    def __init__(self, in_features: int, out_features: int, bias: bool = True, device=None, dtype=None) -> None:
         super(Linear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
 
-        self.weight = Parameter(Tensor.empty((out_features, in_features)))
+        factory_kwargs = {'device': device, 'dtype': dtype}
+
+        self.weight = Parameter(Tensor.empty((out_features, in_features)), **factory_kwargs)
         if bias:
-            self.bias = Parameter(Tensor.zeros(out_features))
+            self.bias = Parameter(Tensor.zeros(out_features), **factory_kwargs)
         else:
             self.bias = None
         self.reset_parameters()
