@@ -155,12 +155,20 @@ class Sum(Function):
 class Mean(Function):
     def forward(ctx, x: NdArray, axis=None, keepdims=False) -> NdArray:
         out = x.mean(axis, keepdims=keepdims)
-        ctx.save_for_backward(x.shape, out.shape)
+        ctx.save_for_backward(x.shape, out.shape, axis, keepdims)
         return out
 
     def backward(ctx, grad: NdArray) -> NdArray:
-        x_shape, out_shape = ctx.saved_tensors
+        x_shape, out_shape, axis, keepdims = ctx.saved_tensors
         grad = grad * (np.prod(out_shape) / np.prod(x_shape))
+        ndim = len(x_shape)
+        axis = (axis,) if np.isscalar(axis) else axis
+        if not (ndim == 0 or axis is None or keepdims):
+            actual_axis = [ax if ax > 0 else ax + ndim for ax in axis]
+            shape = list(grad.shape)
+            for ax in sorted(actual_axis):
+                shape.insert(ax, 1)
+            grad = grad.reshape(shape)
         # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
         xp = get_array_module(grad)
 

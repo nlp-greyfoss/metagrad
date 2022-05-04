@@ -1,7 +1,9 @@
+from typing import Tuple
+
 import numpy as np
 from numpy import ndarray
 
-from metagrad.tensor import Tensor, Config
+from metagrad.tensor import Tensor, Config, NdArray
 from metagrad.ops import Function
 from metagrad.cuda import get_array_module
 
@@ -126,8 +128,9 @@ def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
     if input.ndim == target.ndim and input.shape == target.shape:
         errors = - target * input
     else:
+        xp = input.xp
         # 如果target是类别索引
-        errors = -input[range(target.shape[0]), target.array()]
+        errors = -input[xp.arange(target.shape[0]), target.array()]
     return _reduction(errors, reduction)
 
 
@@ -173,3 +176,33 @@ def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
         return input * Tensor(mask, requires_grad=False) / (1 - p)
     else:
         return input
+
+
+class Embedding(Function):
+    def forward(ctx, weight: NdArray, indices: NdArray) -> NdArray:
+        ctx.save_for_backward(weight.shape, indices)
+        return weight[indices]
+
+    def backward(ctx, grad: NdArray) -> Tuple[NdArray, None]:
+        w_shape, indices = ctx.saved_tensors
+
+        xp = get_array_module(grad)
+
+        bigger_grad = xp.zeros(w_shape, dtype=grad.dtype)
+
+        if xp is np:
+            np.add.at(bigger_grad, indices, grad)
+        else:
+            bigger_grad.scatter_add(indices, grad)
+
+        # 因为它有两个输入，防止错误地拆开bigger_grad
+        # indices 不需要梯度
+        return bigger_grad, None
+
+
+def embedding(weight: Tensor, indices: Tensor) -> Tensor:
+    return Embedding.apply(Embedding, weight, indices)
+
+
+def cos_similarty(u, v):
+    pass

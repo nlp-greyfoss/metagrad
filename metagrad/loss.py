@@ -41,7 +41,6 @@ class BCELoss(_Loss):
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         '''
-
         :param input: logits
         :param target:  真实标签 0或1
         :return:
@@ -68,7 +67,6 @@ class NLLLoss(_Loss):
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         '''
-
         :param input: 对数概率 即 log_softmax
         :param target: 类别索引 或 one-hot向量
         :return:
