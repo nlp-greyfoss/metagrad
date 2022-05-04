@@ -8,8 +8,9 @@ from metagrad.dataset import TensorDataset
 from metagrad.functions import sigmoid
 from metagrad.loss import BCELoss
 from metagrad.optim import SGD
-from metagrad.tensor import Tensor
+from metagrad.tensor import Tensor, debug_mode
 from metagrad.tensor import no_grad
+from metagrad import cuda
 
 
 class Feedforward(nn.Module):
@@ -77,13 +78,15 @@ def vectorize_sequences(sequences, dimension=10000):
     return results
 
 
-def compute_loss_and_accury(data_loader: DataLoader, model, loss_func, total_nums, opt=None):
+def compute_loss_and_accury(data_loader: DataLoader, model, loss_func, total_nums, opt=None, device=None):
     losses = []
     correct = 0
     for X_batch, y_batch in data_loader:
+        X_batch.to(device)
+        y_batch.to(device)
+
         y_pred = model(X_batch)
         l = loss_func(y_pred, y_batch)
-
         if opt is not None:
             l.backward()
             opt.step()
@@ -97,13 +100,17 @@ def compute_loss_and_accury(data_loader: DataLoader, model, loss_func, total_num
     loss = sum(losses) / total_nums  # 总损失 除以 样本总数
     accuracy = 100 * correct / total_nums
 
-    return loss, accuracy
+    return loss, accuracy.item()
 
 
 if __name__ == '__main__':
     X_train, X_test, y_train, y_test, X_val, y_val = load_dataset()
 
+    device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
+    print(f"current device: {device}")
+
     model = Feedforward(10000, 128, 1)  # 输入大小10000,隐藏层大小128，输出只有一个，代表判断为正例的概率
+    model.to(device)
 
     optimizer = SGD(model.parameters(), lr=0.001)
     # 先计算sum
@@ -122,13 +129,14 @@ if __name__ == '__main__':
     val_dl = DataLoader(val_ds, batch_size=batch_size)
 
     for epoch in range(epochs):
-        train_loss, train_accuracy = compute_loss_and_accury(train_dl, model, loss, len(X_train), optimizer)
+        train_loss, train_accuracy = compute_loss_and_accury(train_dl, model, loss, len(X_train), optimizer,
+                                                             device=device)
 
         train_losses.append(train_loss)
         train_accuracies.append(train_accuracy)
 
         with no_grad():
-            val_loss, val_accuracy = compute_loss_and_accury(val_dl, model, loss, len(X_val))
+            val_loss, val_accuracy = compute_loss_and_accury(val_dl, model, loss, len(X_val), device=device)
 
             val_losses.append(val_loss)
             val_accuracies.append(val_accuracy)
@@ -159,7 +167,9 @@ if __name__ == '__main__':
 
     # 最后在测试集上测试
     with no_grad():
-        X_test, y_test = Tensor(X_test), Tensor(y_test)
+        X_test.to(device)
+        y_test.to(device)
+
         outputs = model(X_test)
         correct = np.sum(sigmoid(outputs).array().round() == y_test.array())
         accuracy = 100 * correct / len(y_test)

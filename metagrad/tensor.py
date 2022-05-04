@@ -130,6 +130,8 @@ class Tensor:
             dtype: 数据类型，默认为None
             device: 设备类型 CpuDevice 或 GpuDevice
         '''
+        if isinstance(data, Tensor):
+            data = data.data
 
         if device is None:
             device = get_device_from_array(data)
@@ -190,15 +192,17 @@ class Tensor:
         return np if device is None else device.xp
 
     def to(self, device):
-        self._device = get_device(device)
+        device = get_device(device)
         # 如果设备一致了
         if get_device_from_array(self._data) == device:
             return
         # 转移到设备上
         self._data = device.transfer(self.data)
 
+        self._device = device
+
         if self._grad is not None:
-            self._grad = device.transfer(self._grad)
+            self._grad = Tensor(device.transfer(self._grad.data), device=device)
 
     def to_cpu(self):
         '''拷贝数据和梯度到CPU'''
@@ -219,7 +223,8 @@ class Tensor:
         self._grad = Tensor(xp.zeros_like(self.data))
 
     def __repr__(self) -> str:
-        return f"Tensor({self.data}, requires_grad={self.requires_grad})"
+        return f"Tensor({self.data}, requires_grad={self.requires_grad}" \
+               f"{', device:' + self.device.name if isinstance(self.device, GpuDevice) else ''})"
 
     def __len__(self) -> int:
         return len(self.data)
@@ -253,7 +258,8 @@ class Tensor:
         """转换为Numpy或Cupy数组"""
         return self.data
 
-    def item(self) -> Any:
+    def item(self) -> Number:
+        '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
 
     def squeeze(self) -> Any:
@@ -398,7 +404,7 @@ def register(name, fxn):
         device = CpuDevice()
 
         for x in xs:
-            gpu_device = GpuDevice.from_array(x)
+            gpu_device = GpuDevice.from_array(x.data if isinstance(x, Tensor) else x)
             if gpu_device is not None:
                 device = gpu_device
                 break

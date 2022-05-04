@@ -1,7 +1,7 @@
 from numbers import Number
 
 import numpy
-
+import metagrad
 
 class _FakeContext:
     '''用于CPU的假的上下文，相当于啥也没做'''
@@ -118,7 +118,7 @@ class CpuDevice(Device):
         if numpy.isscalar(array):
             return numpy.asarray(array)
 
-        if isinstance(array, cuda.ndarray):
+        if isinstance(array, ndarray):
             return array.get()
 
         raise TypeError(f'Actual type{type(array)} cannot be converted to numpy.ndarray')
@@ -136,7 +136,7 @@ class GpuDevice(Device):
 
     @property
     def name(self):
-        return f'cupy:{self.device.id}'
+        return f'cuda:{self.device.id}'
 
     @staticmethod
     def from_device_id(device_id: int = 0):
@@ -146,7 +146,7 @@ class GpuDevice(Device):
 
     @staticmethod
     def from_array(array: ndarray):
-        if isinstance(array, ndarray) and array.deivce is not None:
+        if isinstance(array, ndarray) and array.device is not None:
             return GpuDevice(array.device)
         return None
 
@@ -161,7 +161,7 @@ class GpuDevice(Device):
             # 将Number或number list转换为numpy数组
             array = numpy.asarray(array)
 
-        if isinstance(array, cuda.ndarray):
+        if isinstance(array, ndarray):
             if array.device == self.device:
                 return array
             is_numpy = False
@@ -215,7 +215,7 @@ def get_device(device_desc) -> Device:
     if device_desc == 'cpu':
         return CpuDevice()
 
-    if device_desc.startwith('cuda'):
+    if device_desc.startswith('cuda'):
         name, colon, device_id = device_desc.partition(':')
         if not colon:
             device_id = 0
@@ -251,3 +251,15 @@ def get_gpu_device_or_current(device):
         return cuda.Device(device)
 
     raise ValueError('Invalid argument, only support `cuda.Device` or non-negative int')
+
+
+def get_array_module(array):
+    '''
+    返回array对应的是numpy还是cupy
+    '''
+    if is_available():
+        if isinstance(array, metagrad.Tensor):
+            array = array.data
+        return cupy.get_array_module(array)
+
+    return numpy
