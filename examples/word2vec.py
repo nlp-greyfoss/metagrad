@@ -162,6 +162,7 @@ if __name__ == '__main__':
     loss_func = CrossEntropyLoss()
     # 构建模型
     model = CBOWModel(len(vocab), embedding_dim)
+
     optimizer = SGD(model.parameters(), lr=1)
     for epoch in range(num_epoch):
         total_loss = 0
