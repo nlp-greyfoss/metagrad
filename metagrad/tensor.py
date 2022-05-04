@@ -18,7 +18,7 @@ from metagrad.cuda import (
     using_device
 )
 
-_type = float
+_type = np.float32
 
 # 设置显示精度
 np.set_printoptions(precision=4)
