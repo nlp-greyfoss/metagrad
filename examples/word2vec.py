@@ -4,6 +4,7 @@ import numpy as np
 from tqdm import tqdm
 
 import metagrad.module as nn
+from metagrad import cuda
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
 from metagrad.loss import CrossEntropyLoss
@@ -110,7 +111,7 @@ class CBOWModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
         # 词向量层，即权重矩阵W
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
-        uniform_(self.embeddings.weight, -WEIGHT_INIT_RANGE, WEIGHT_INIT_RANGE)
+        # uniform_(self.embeddings.weight, -WEIGHT_INIT_RANGE, WEIGHT_INIT_RANGE)
         # 输出层，包含权重矩阵W'
         self.output = nn.Linear(embedding_dim, vocab_size, bias=False)
 
@@ -159,15 +160,18 @@ if __name__ == '__main__':
         shuffle=True
     )
 
+    device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
+
     loss_func = CrossEntropyLoss()
     # 构建模型
     model = CBOWModel(len(vocab), embedding_dim)
+    model.to(device)
 
     optimizer = SGD(model.parameters(), lr=1)
     for epoch in range(num_epoch):
         total_loss = 0
         for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
-            inputs, targets = batch
+            inputs, targets = [x.to(device) for x in batch]
             optimizer.zero_grad()
             output = model(inputs)
             loss = loss_func(output, targets)
