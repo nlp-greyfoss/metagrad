@@ -128,8 +128,9 @@ def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
     if input.ndim == target.ndim and input.shape == target.shape:
         errors = - target * input
     else:
+        xp = input.xp
         # 如果target是类别索引
-        errors = -input[range(target.shape[0]), target.array()]
+        errors = -input[xp.arange(target.shape[0]), target.array()]
     return _reduction(errors, reduction)
 
 

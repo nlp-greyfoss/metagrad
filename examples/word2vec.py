@@ -147,7 +147,7 @@ if __name__ == '__main__':
     embedding_dim = 64
     window_size = 2
     hidden_dim = 128
-    batch_size = 2048
+    batch_size = 1024
     num_epoch = 10
 
     corpus, vocab = load_corpus('data/xiyouji.txt')
@@ -161,6 +161,8 @@ if __name__ == '__main__':
     )
 
     device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
+
+    print(f'current device:{device}')
 
     loss_func = CrossEntropyLoss()
     # 构建模型
@@ -177,6 +179,6 @@ if __name__ == '__main__':
             loss = loss_func(output, targets)
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
+            total_loss += loss
 
-        print(f'Loss: {total_loss:.2f}')
+        print(f'Loss: {total_loss.item():.2f}')
