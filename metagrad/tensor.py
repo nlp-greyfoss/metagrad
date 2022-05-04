@@ -204,14 +204,16 @@ class Tensor:
         if self._grad is not None:
             self._grad = Tensor(device.transfer(self._grad.data), device=device)
 
+        return self
+
     def to_cpu(self):
         '''拷贝数据和梯度到CPU'''
-        self.to(CpuDevice())
+        return self.to(CpuDevice())
 
     def to_gpu(self, device=None):
         '''拷贝数据和梯度到指定的GPU'''
         check_cuda_available()
-        self.to(get_gpu_device_or_current(device))
+        return self.to(get_gpu_device_or_current(device))
 
     def zero_grad(self) -> None:
         '''
