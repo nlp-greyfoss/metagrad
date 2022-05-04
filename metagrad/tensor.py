@@ -18,7 +18,7 @@ from metagrad.cuda import (
     using_device
 )
 
-_type = float
+_type = np.float32
 
 # 设置显示精度
 np.set_printoptions(precision=4)
@@ -195,7 +195,7 @@ class Tensor:
         device = get_device(device)
         # 如果设备一致了
         if get_device_from_array(self._data) == device:
-            return
+            return self
         # 转移到设备上
         self._data = device.transfer(self.data)
 
@@ -315,6 +315,11 @@ class Tensor:
     def eye(cls, dim, dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
         xp = device.xp
         return cls(xp.eye(dim).astype(dtype), device=device, **kwargs)
+
+    @classmethod
+    def uniform(cls, *shape, low: float = -1.0, high: float = 1.0,
+                dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
+        return cls((np.random.uniform(low, high, size=shape)).astype(dtype), device=device, **kwargs)
 
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":

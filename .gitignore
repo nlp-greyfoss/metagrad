@@ -51,6 +51,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+*.pt
 
 # image in examples
 examples/*.png

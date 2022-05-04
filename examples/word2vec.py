@@ -182,3 +182,5 @@ if __name__ == '__main__':
             total_loss += loss
 
         print(f'Loss: {total_loss.item():.2f}')
+
+    model.save()
