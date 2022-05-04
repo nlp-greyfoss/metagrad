@@ -195,7 +195,7 @@ class Tensor:
         device = get_device(device)
         # 如果设备一致了
         if get_device_from_array(self._data) == device:
-            return
+            return self
         # 转移到设备上
         self._data = device.transfer(self.data)
 

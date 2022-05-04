@@ -10,7 +10,7 @@ def test_simple_embedding():
     embed = nn.Embedding(n, d)
 
     x = 2
-    mx = Tensor(x, dtype=np.int)
+    mx = Tensor(x)
     my = embed(mx)
 
     my.sum().backward()
@@ -24,7 +24,7 @@ def test_from_pretrained():
     embed = nn.Embedding.from_pretrained(weight, freeze=False)
 
     x = [0, 2]
-    mx = Tensor(x, dtype=np.int)
+    mx = Tensor(x)
     my = embed(mx)
 
     my.sum().backward()
