@@ -51,6 +51,7 @@ class Module:
 
     def save(self, path='model.pt'):
         with open(path, 'wb') as f:
+            print(f'Saving {self} to {path}')
             pickle.dump(self, f)
 
     def load(self, path='model.pt'):

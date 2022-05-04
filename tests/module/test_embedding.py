@@ -24,7 +24,7 @@ def test_from_pretrained():
     embed = nn.Embedding.from_pretrained(weight, freeze=False)
 
     x = [0, 2]
-    mx = Tensor(x)
+    mx = Tensor(x, requires_grad=True)
     my = embed(mx)
 
     my.sum().backward()

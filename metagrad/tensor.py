@@ -316,6 +316,11 @@ class Tensor:
         xp = device.xp
         return cls(xp.eye(dim).astype(dtype), device=device, **kwargs)
 
+    @classmethod
+    def uniform(cls, *shape, low: float = -1.0, high: float = 1.0,
+                dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
+        return cls((np.random.uniform(low, high, size=shape)).astype(dtype), device=device, **kwargs)
+
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
         return self.slice(idxs)
