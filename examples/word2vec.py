@@ -9,8 +9,7 @@ from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
 from metagrad.loss import CrossEntropyLoss
 from metagrad.optim import SGD
-from metagrad.tensor import Tensor, debug_mode
-from metagrad.init import uniform_
+from metagrad.tensor import Tensor
 
 BOS_TOKEN = "<bos>"  # 句子开始标记
 EOS_TOKEN = "<eos>"  # 句子结束标记
@@ -61,6 +60,11 @@ class Vocabulary:
     def __getitem__(self, token):
         '''得到token对应的id'''
         return self._token_to_idx.get(token, self.unk)
+
+    def token(self, idx):
+        assert 0 <= idx < len(self._idx_to_token)
+        '''根据索引获取token'''
+        return self._idx_to_token[idx]
 
     def to_ids(self, tokens):
         return [self[token] for token in tokens]
@@ -148,7 +152,7 @@ if __name__ == '__main__':
     window_size = 2
     hidden_dim = 128
     batch_size = 1024
-    num_epoch = 10
+    num_epoch = 1000
 
     corpus, vocab = load_corpus('data/xiyouji.txt')
     # 构建数据集
