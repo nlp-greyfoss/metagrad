@@ -111,6 +111,45 @@ class CBOWDataset(Dataset):
         return inputs, targets
 
 
+class SkipGramDataset(Dataset):
+    def __init__(self, corpus, vocab, window_size=2):
+        self.data = []
+        self.bos = vocab[BOS_TOKEN]
+        self.eos = vocab[EOS_TOKEN]
+
+        for sentence in tqdm(corpus, desc='Dataset Construction'):
+            sentence = [self.bos] + sentence + [self.eos]
+
+            for i in range(1, len(sentence) - 1):
+                # 模型输入：当前词
+                w = sentence[i]
+                # 模型输出： 窗口大小内的上下文
+                # max 和 min 防止越界取到非预期的单词
+                left_context_index = max(0, i - window_size)
+                right_context_index = min(len(sentence), i + window_size)
+                context = sentence[left_context_index:i] + sentence[i + 1:right_context_index + 1]
+                self.data.extend([(w, c) for c in context])
+
+        self.data = np.asarray(self.data)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, i):
+        return self.data[i]
+
+    @staticmethod
+    def collate_fn(examples):
+        '''
+        自定义整理函数
+        :param examples:
+        :return:
+        '''
+        inputs = Tensor([ex[0] for ex in examples])
+        targets = Tensor([ex[1] for ex in examples])
+        return inputs, targets
+
+
 class CBOWModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
         # 词向量层，即权重矩阵W
@@ -128,7 +167,20 @@ class CBOWModel(nn.Module):
         return output
 
 
-def load_corpus(corpus_path):
+class SkipGramModel(nn.Module):
+    def __init__(self, vocab_size, embedding_dim):
+        self.embeddings = nn.Embedding(vocab_size, embedding_dim)
+        self.output = nn.Linear(embedding_dim, vocab_size)
+
+    def forward(self, inputs: Tensor) -> Tensor:
+        # 得到输入词向量
+        embeds = self.embeddings(inputs)
+        # 根据输入词向量，对上下文进行预测
+        output = self.output(embeds)
+        return output
+
+
+def load_corpus(corpus_path, min_freq=2):
     '''
     从corpus_path中读取预料
     :param corpus_path: 处理好的文本路径
@@ -139,7 +191,7 @@ def load_corpus(corpus_path):
     # 去掉空行，将文本转换为单词列表
     text = [[word for word in sentence.split(' ')] for sentence in lines if len(sentence) != 0]
     # 构建词典
-    vocab = Vocabulary.build(text, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
+    vocab = Vocabulary.build(text, min_freq=min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
     print(f'vocab size:{len(vocab)}')
     # 构建语料:将单词转换为ID
     corpus = [vocab.to_ids(sentence) for sentence in text]
@@ -147,14 +199,14 @@ def load_corpus(corpus_path):
     return corpus, vocab
 
 
-if __name__ == '__main__':
+def train_cbow():
     embedding_dim = 64
-    window_size = 2
-    hidden_dim = 128
+    window_size = 3
     batch_size = 1024
-    num_epoch = 1000
+    num_epoch = 10
+    min_freq = 3  # 保留单词最少出现的次数
 
-    corpus, vocab = load_corpus('data/xiyouji.txt')
+    corpus, vocab = load_corpus('data/xiyouji.txt', min_freq)
     # 构建数据集
     dataset = CBOWDataset(corpus, vocab, window_size=window_size)
     data_loader = DataLoader(
@@ -188,3 +240,44 @@ if __name__ == '__main__':
         print(f'Loss: {total_loss.item():.2f}')
 
     model.save()
+
+
+def train_sg():
+    embedding_dim = 64
+    window_size = 3
+    batch_size = 1024
+    num_epoch = 10
+    min_freq = 3  # 保留单词最少出现的次数
+
+    # 读取文本数据，构建Skip-gram模型训练数据集
+    corpus, vocab = load_corpus('data/xiyouji.txt', min_freq)
+    dataset = SkipGramDataset(corpus, vocab, window_size=window_size)
+    data_loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        collate_fn=dataset.collate_fn,
+        shuffle=True
+    )
+
+    loss_func = CrossEntropyLoss()
+    # 构建Skip-gram模型，并加载至device
+    device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
+    model = SkipGramModel(len(vocab), embedding_dim)
+    model.to(device)
+    optimizer = SGD(model.parameters(), lr=1)
+
+    for epoch in range(num_epoch):
+        total_loss = 0
+        for batch in tqdm(data_loader, desc=f"Training Epoch {epoch}"):
+            inputs, targets = [x.to(device) for x in batch]
+            optimizer.zero_grad()
+            output = model(inputs)
+            loss = loss_func(output, targets)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss
+        print(f"Loss: {total_loss.item():.2f}")
+
+
+if __name__ == '__main__':
+    train_sg()
