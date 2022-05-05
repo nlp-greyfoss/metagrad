@@ -122,7 +122,8 @@ class Linear(Module):
 
 
 class Embedding(Module):
-    def __init__(self, num_embeddings: int, embedding_dim: int, _weight: Optional[Tensor] = None) -> None:
+    def __init__(self, num_embeddings: int, embedding_dim: int, _weight: Optional[Tensor] = None,
+                 dtype=None, device=None) -> None:
         '''
         一个存储固定大小词汇表嵌入的查找表，可以通过索引(列表)直接访问，而不是one-hot向量。
         :param num_embeddings: 词汇表大小
@@ -135,12 +136,12 @@ class Embedding(Module):
 
         # 也可以传预训练好的权重进来
         if _weight is None:
-            self.weight = Parameter(Tensor.empty((num_embeddings, embedding_dim)))
+            self.weight = Parameter(Tensor.empty((num_embeddings, embedding_dim), dtype=dtype, device=device))
             self.reset_parameters()
         else:
             assert list(_weight.shape) == [num_embeddings, embedding_dim], \
                 'Shape of weight does not match num_embeddings and embedding_dim'
-            self.weight = Parameter(_weight)
+            self.weight = Parameter(_weight, device=device)
 
     def reset_parameters(self) -> None:
         init.uniform_(self.weight)

@@ -131,7 +131,12 @@ class Tensor:
             device: 设备类型 CpuDevice 或 GpuDevice
         '''
         if isinstance(data, Tensor):
+            if dtype is None:
+                dtype = data.dtype
+            if device is None:
+                device = data.device
             data = data.data
+
 
         if device is None:
             device = get_device_from_array(data)
