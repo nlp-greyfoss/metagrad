@@ -286,44 +286,37 @@ class Tensor:
 
     # ****创造帮助函数****
     @classmethod
-    def empty(cls, *shape, dtype=_type, device=CpuDevice(), **kwargs):
-        xp = device.xp
-        return cls(xp.empty(*shape, dtype=dtype), device=device, **kwargs)
+    def empty(cls, *shape, dtype=_type, device=None, **kwargs):
+        return cls(np.empty(*shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def zeros(cls, *shape, dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
-        xp = device.xp
-        return cls(xp.zeros(shape, dtype=dtype), device=device, **kwargs)
+    def zeros(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
+        return cls(np.zeros(shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def ones(cls, *shape, dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
-        xp = device.xp
-        return cls(xp.ones(shape, dtype=dtype), device=device, **kwargs)
+    def ones(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
+        return cls(np.ones(shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def ones_like(cls, t: "Tensor", dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
-        xp = device.xp
-        return cls(xp.ones(t.shape, dtype=dtype), device=device, **kwargs)
+    def ones_like(cls, t: "Tensor", dtype=_type, device=None, **kwargs) -> "Tensor":
+        return cls(np.ones(t.shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def randn(cls, *shape, dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
-        xp = device.xp
-        return cls(xp.random.randn(*shape).astype(dtype), device=device, **kwargs)
+    def randn(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
+        return cls(np.random.randn(*shape).astype(dtype), device=device, **kwargs)
 
     @classmethod
-    def arange(cls, stop, start=0, step=1, dtype=int, device=CpuDevice(), **kwargs) -> "Tensor":
+    def arange(cls, stop, start=0, step=1, dtype=int, device=None, **kwargs) -> "Tensor":
         stop, start = start, stop
-        xp = device.xp
-        return cls(xp.arange(start=start, stop=stop, step=step).astype(dtype), device=device, **kwargs)
+        return cls(np.arange(start=start, stop=stop, step=step).astype(dtype), device=device, **kwargs)
 
     @classmethod
-    def eye(cls, dim, dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
-        xp = device.xp
-        return cls(xp.eye(dim).astype(dtype), device=device, **kwargs)
+    def eye(cls, dim, dtype=_type, device=None, **kwargs) -> "Tensor":
+        return cls(np.eye(dim).astype(dtype), device=device, **kwargs)
 
     @classmethod
     def uniform(cls, *shape, low: float = -1.0, high: float = 1.0,
-                dtype=_type, device=CpuDevice(), **kwargs) -> "Tensor":
+                dtype=_type, device=None, **kwargs) -> "Tensor":
         return cls((np.random.uniform(low, high, size=shape)).astype(dtype), device=device, **kwargs)
 
     # 切片操作
