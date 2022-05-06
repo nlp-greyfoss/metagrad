@@ -119,10 +119,9 @@ class Adam(Optimizer):
                     bias_correction1 = 1 - beta1 ** step
                     bias_correction2 = 1 - beta2 ** step
 
+                    a = lr * math.sqrt(bias_correction2) / bias_correction1
+
                     exp_avgs[i] = beta1 * exp_avgs[i] + (1.0 - beta1) * grad
                     exp_avg_sqs[i] = beta2 * exp_avg_sqs[i] + (1.0 - beta2) * grad * grad
 
-                    denom = exp_avg_sqs[i].sqrt() / math.sqrt(bias_correction2)
-                    step_size = lr / bias_correction1
-
-                    p -= step_size * exp_avgs[i] / (denom + eps)
+                    p -= a * exp_avgs[i] / (exp_avg_sqs[i].sqrt() + eps)

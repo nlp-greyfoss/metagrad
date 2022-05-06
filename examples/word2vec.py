@@ -305,7 +305,7 @@ def search(search_key):
     min_freq = 5  # 保留单词最少出现的次数
     embedding_dim = 64
 
-    corpus, vocab = load_corpus('data/xiyouji.txt', min_freq)
+    corpus, vocab = load_corpus('xiyouji.txt', min_freq)
 
     model = SkipGramModel(len(vocab), embedding_dim)
     model = model.load()
