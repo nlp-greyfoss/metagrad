@@ -137,7 +137,6 @@ class Tensor:
                 device = data.device
             data = data.data
 
-
         if device is None:
             device = get_device_from_array(data)
 
@@ -294,12 +293,16 @@ class Tensor:
         return cls(np.zeros(shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
+    def zeros_like(cls, t: "Tensor", **kwargs) -> "Tensor":
+        return cls.zeros(t.shape, t.dtype, t.device, **kwargs)
+
+    @classmethod
     def ones(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
         return cls(np.ones(shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def ones_like(cls, t: "Tensor", dtype=_type, device=None, **kwargs) -> "Tensor":
-        return cls(np.ones(t.shape, dtype=dtype), device=device, **kwargs)
+    def ones_like(cls, t: "Tensor", **kwargs) -> "Tensor":
+        return cls.ones(t.shape, t.dtype, t.device, **kwargs)
 
     @classmethod
     def randn(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":

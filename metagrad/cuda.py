@@ -3,6 +3,7 @@ from numbers import Number
 import numpy
 import metagrad
 
+
 class _FakeContext:
     '''用于CPU的假的上下文，相当于啥也没做'''
 
@@ -191,6 +192,12 @@ def is_available():
 def check_cuda_available():
     if not gpu_available:
         raise RuntimeError('Install cupy first.')
+
+
+def device_count():
+    if not is_available():
+        return 0
+    return cuda.device_count()
 
 
 def get_device(device_desc) -> Device:

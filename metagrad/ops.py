@@ -277,6 +277,18 @@ class Abs(Function):
         return grad * xp.where(x == 0, 0, x / xp.abs(x))
 
 
+class Sqrt(Function):
+    def forward(ctx, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+        ret = xp.sqrt(x)
+        ctx.save_for_backward(ret)
+        return ret
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        ret, = ctx.saved_tensors
+        return grad / (ret * 2.0)
+
+
 # ****变形和切片****
 class Slice(Function):
     def forward(ctx, x: NdArray, slices: Any) -> NdArray:

@@ -50,6 +50,7 @@ class Module:
         return self.train(False)
 
     def save(self, path='model.pt'):
+        self.to_cpu()
         with open(path, 'wb') as f:
             print(f'Saving {self} to {path}')
             pickle.dump(self, f)
