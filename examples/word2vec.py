@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 import numpy as np
+from torch.nn.init import uniform_
 from tqdm import tqdm
 
 import metagrad.module as nn
@@ -10,6 +11,7 @@ from metagrad.dataset import Dataset
 from metagrad.loss import CrossEntropyLoss
 from metagrad.optim import SGD
 from metagrad.tensor import Tensor
+import metagrad.functions as F
 
 BOS_TOKEN = "<bos>"  # 句子开始标记
 EOS_TOKEN = "<eos>"  # 句子结束标记
@@ -115,7 +117,7 @@ class CBOWModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
         # 词向量层，即权重矩阵W
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
-        # uniform_(self.embeddings.weight, -WEIGHT_INIT_RANGE, WEIGHT_INIT_RANGE)
+        uniform_(self.embeddings.weight, -WEIGHT_INIT_RANGE, WEIGHT_INIT_RANGE)
         # 输出层，包含权重矩阵W'
         self.output = nn.Linear(embedding_dim, vocab_size, bias=False)
 
@@ -171,20 +173,11 @@ if __name__ == '__main__':
     loss_func = CrossEntropyLoss()
     # 构建模型
     model = CBOWModel(len(vocab), embedding_dim)
+    model = model.load()
     model.to(device)
 
-    optimizer = SGD(model.parameters(), lr=1)
-    for epoch in range(num_epoch):
-        total_loss = 0
-        for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
-            inputs, targets = [x.to(device) for x in batch]
-            optimizer.zero_grad()
-            output = model(inputs)
-            loss = loss_func(output, targets)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss
+    w = model.embeddings.weight
+    w = w.to_cpu().data
+    print(f'w.shape:{w.shape}')
 
-        print(f'Loss: {total_loss.item():.2f}')
-
-    model.save()
+   

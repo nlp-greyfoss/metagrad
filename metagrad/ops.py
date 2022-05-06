@@ -222,7 +222,7 @@ class Matmul(Function):
 
 # ****一元运算****
 class Pow(Function):
-    def forward(ctx, x: NdArray, c: NdArray) -> NdArray:
+    def forward(ctx, x: NdArray, c: float) -> NdArray:
         ctx.save_for_backward(x, c)
         return x ** c
 

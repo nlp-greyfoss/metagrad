@@ -77,6 +77,9 @@ class Module:
     def to(self, device):
         return self._apply(lambda t: t.to(device))
 
+    def __repr__(self):
+        return self.__class__.__name__
+
 
 class Linear(Module):
     r"""
