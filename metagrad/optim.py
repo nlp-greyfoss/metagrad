@@ -1,5 +1,8 @@
+import math
+from collections import defaultdict
+
 from metagrad.paramater import Parameter
-from metagrad.tensor import no_grad
+from metagrad.tensor import no_grad, Tensor
 
 
 class Optimizer:
@@ -71,3 +74,55 @@ class SGD(Optimizer):
                     if weight_decay != 0:
                         d_p += weight_decay * p
                     p -= d_p * lr
+
+
+class Adam(Optimizer):
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8):
+        defaults = dict(lr=lr, betas=betas, eps=eps)
+        super().__init__(params, defaults)
+        self.state = defaultdict(dict)
+
+    def step(self) -> None:
+        with no_grad():
+            for group in self.param_groups:
+                beta1, beta2 = group['betas']
+                eps = group['eps']
+                lr = group['lr']
+                grads = []
+                state_steps = []
+                exp_avgs = []
+                exp_avg_sqs = []
+
+                params = group['params']
+
+                for p in params:
+                    state = self.state[p]
+
+                    grads.append(p.grad)
+
+                    if len(state) == 0:
+                        state['step'] = Tensor(0)
+                        state['exp_avg'] = Tensor.zeros_like(p)  # m
+                        state['exp_avg_sq'] = Tensor.zeros_like(p)  # v
+
+                    state_steps.append(state['step'])
+                    exp_avgs.append(state['exp_avg'])
+                    exp_avg_sqs.append(state['exp_avg_sq'])
+
+                for i, param in enumerate(params):
+                    grad = grads[i]
+
+                    step_t = state_steps[i]
+                    step_t += 1
+                    step = step_t.item()
+
+                    bias_correction1 = 1 - beta1 ** step
+                    bias_correction2 = 1 - beta2 ** step
+
+                    exp_avgs[i] = beta1 * exp_avgs[i] + (1.0 - beta1) * grad
+                    exp_avg_sqs[i] = beta2 * exp_avg_sqs[i] + (1.0 - beta2) * grad * grad
+
+                    denom = exp_avg_sqs[i].sqrt() / math.sqrt(bias_correction2)
+                    step_size = lr / bias_correction1
+
+                    p -= step_size * exp_avgs[i] / (denom + eps)

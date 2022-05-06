@@ -222,7 +222,7 @@ class Matmul(Function):
 
 # ****一元运算****
 class Pow(Function):
-    def forward(ctx, x: NdArray, c: NdArray) -> NdArray:
+    def forward(ctx, x: NdArray, c: float) -> NdArray:
         ctx.save_for_backward(x, c)
         return x ** c
 
@@ -275,6 +275,18 @@ class Abs(Function):
         # x中元素为0的位置，返回0
         # 否则返回+1/-1
         return grad * xp.where(x == 0, 0, x / xp.abs(x))
+
+
+class Sqrt(Function):
+    def forward(ctx, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+        ret = xp.sqrt(x)
+        ctx.save_for_backward(ret)
+        return ret
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        ret, = ctx.saved_tensors
+        return grad / (ret * 2.0)
 
 
 # ****变形和切片****

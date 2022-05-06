@@ -1,6 +1,7 @@
 from collections import defaultdict
 
 import numpy as np
+from torch.nn.init import uniform_
 from tqdm import tqdm
 
 import metagrad.module as nn
@@ -8,8 +9,9 @@ from metagrad import cuda
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
 from metagrad.loss import CrossEntropyLoss
-from metagrad.optim import SGD
+from metagrad.optim import Adam
 from metagrad.tensor import Tensor
+import metagrad.functions as F
 
 BOS_TOKEN = "<bos>"  # 句子开始标记
 EOS_TOKEN = "<eos>"  # 句子结束标记
@@ -62,7 +64,7 @@ class Vocabulary:
         return self._token_to_idx.get(token, self.unk)
 
     def token(self, idx):
-        assert 0 <= idx < len(self._idx_to_token)
+        assert 0 <= idx < len(self._idx_to_token), f"actual index : {idx} not between 0 and {len(self._idx_to_token)}"
         '''根据索引获取token'''
         return self._idx_to_token[idx]
 
@@ -154,7 +156,7 @@ class CBOWModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
         # 词向量层，即权重矩阵W
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
-        # uniform_(self.embeddings.weight, -WEIGHT_INIT_RANGE, WEIGHT_INIT_RANGE)
+        uniform_(self.embeddings.weight, -WEIGHT_INIT_RANGE, WEIGHT_INIT_RANGE)
         # 输出层，包含权重矩阵W'
         self.output = nn.Linear(embedding_dim, vocab_size, bias=False)
 
@@ -225,7 +227,7 @@ def train_cbow():
     model = CBOWModel(len(vocab), embedding_dim)
     model.to(device)
 
-    optimizer = SGD(model.parameters(), lr=1)
+    optimizer = Adam(model.parameters())
     for epoch in range(num_epoch):
         total_loss = 0
         for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
@@ -264,7 +266,7 @@ def train_sg():
     device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
     model = SkipGramModel(len(vocab), embedding_dim)
     model.to(device)
-    optimizer = SGD(model.parameters(), lr=1)
+    optimizer = Adam(model.parameters(), lr=1)
 
     for epoch in range(num_epoch):
         total_loss = 0
@@ -279,5 +281,41 @@ def train_sg():
         print(f"Loss: {total_loss.item():.2f}")
 
 
+def find_nearest(key, vocab, embedding_weights, top_k=3):
+    idx = vocab[key]
+
+    embed = embedding_weights[idx]
+    embed = embed.reshape((-1, 1))
+
+    score = embedding_weights @ embed
+    score = score.squeeze()
+
+    count = 0
+    for i in (-score).argsort():
+        i = i.item()
+        if vocab.token(i) == key:
+            continue
+        print('{0}: {1}'.format(vocab.token(i), score[i]))
+        count += 1
+        if count == top_k:
+            break
+
+
+def search(search_key):
+    min_freq = 5  # 保留单词最少出现的次数
+    embedding_dim = 64
+
+    corpus, vocab = load_corpus('data/xiyouji.txt', min_freq)
+
+    model = SkipGramModel(len(vocab), embedding_dim)
+    model = model.load()
+    weight = model.embeddings.weight.data
+    import cupy
+
+    s = cupy.sqrt((weight * weight).sum(1))
+    weight /= s.reshape((s.shape[0], 1))  # normalize
+    find_nearest(search_key, vocab, weight, topk=5)
+
+
 if __name__ == '__main__':
-    train_sg()
+    train_cbow()

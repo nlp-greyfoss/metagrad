@@ -50,6 +50,7 @@ class Module:
         return self.train(False)
 
     def save(self, path='model.pt'):
+        self.to_cpu()
         with open(path, 'wb') as f:
             print(f'Saving {self} to {path}')
             pickle.dump(self, f)
@@ -76,6 +77,9 @@ class Module:
 
     def to(self, device):
         return self._apply(lambda t: t.to(device))
+
+    def __repr__(self):
+        return self.__class__.__name__
 
 
 class Linear(Module):

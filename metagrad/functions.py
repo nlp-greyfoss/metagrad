@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Any
 
 import numpy as np
 from numpy import ndarray
@@ -14,23 +14,23 @@ class Relu(Function):
     实现relu激活函数
     '''
 
-    def forward(ctx, x: ndarray) -> ndarray:
+    def forward(ctx, x: NdArray) -> NdArray:
         ctx.save_for_backward(x)
         xp = get_array_module(x)
         return xp.maximum(x, 0)
 
-    def backward(ctx, grad: ndarray) -> ndarray:
+    def backward(ctx, grad: NdArray) -> NdArray:
         x, = ctx.saved_tensors
         return grad * (x > 0)
 
 
 class LeakyRelu(Function):
-    def forward(ctx, x: ndarray, slope: float = 0.01) -> ndarray:
+    def forward(ctx, x: NdArray, slope: float = 0.01) -> NdArray:
         ctx.save_for_backward(x, slope)
         xp = get_array_module(x)
         return xp.maximum(x, 0) + slope * xp.minimum(x, 0)
 
-    def backward(ctx, grad: ndarray) -> ndarray:
+    def backward(ctx, grad: NdArray) -> NdArray:
         x, slope = ctx.saved_tensors
         mask = np.array(x > 0).astype(grad.dtype)  # x > 0 : 1
         mask[mask <= 0] = slope  # x <=0 : slope
@@ -38,12 +38,12 @@ class LeakyRelu(Function):
 
 
 class ELU(Function):
-    def forward(ctx, x: ndarray, alpha: float = 1) -> ndarray:
+    def forward(ctx, x: NdArray, alpha: float = 1) -> NdArray:
         xp = get_array_module(x)
         ctx.save_for_backward(x, alpha, xp)
         return xp.maximum(x, 0) + xp.minimum(0, alpha * (xp.exp(x) - 1))
 
-    def backward(ctx, grad: ndarray) -> ndarray:
+    def backward(ctx, grad: NdArray) -> NdArray:
         x, alpha, xp = ctx.saved_tensors
         mask = xp.array(x > 0).astype(grad.dtype)  # x > 0 : 1 加上np.array 兼容标量
         indices = (mask <= 0)
@@ -204,5 +204,26 @@ def embedding(weight: Tensor, indices: Tensor) -> Tensor:
     return Embedding.apply(Embedding, weight, indices)
 
 
-def cos_similarty(u, v):
-    pass
+# 简单的norm实现
+def norm(input: Tensor, p: int = 2, axis=None, keepdims=False):
+    assert p in (1, 2), "Only support L2 normalization(p=2) and L1 normalization(p=1)"
+    if p == 1:
+        return abs(input).sum(axis=axis, keepdims=keepdims)
+    else:
+        return ((input ** 2).sum(axis=axis, keepdims=keepdims)) ** (1 / 2)
+
+
+def cos_sim(u: Tensor, v: Tensor, axis=1):
+    print(u.shape, v.shape)
+
+    u_norm = norm(u, axis=axis)
+    v_norm = norm(v, axis=axis)
+
+    print(u_norm.shape, v_norm.shape)
+
+    return u_norm @ v_norm.T
+    #
+    # fz = (u * v)
+    # print(f'shape:{fz.shape}')
+    # print(f'u_norm:{(u_norm * v_norm).shape}')
+    # return (u / u_norm) * (v / v_norm)
