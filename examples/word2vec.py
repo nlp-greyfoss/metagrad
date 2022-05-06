@@ -9,7 +9,7 @@ from metagrad import cuda
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
 from metagrad.loss import CrossEntropyLoss
-from metagrad.optim import SGD
+from metagrad.optim import Adam
 from metagrad.tensor import Tensor
 import metagrad.functions as F
 
@@ -227,7 +227,7 @@ def train_cbow():
     model = CBOWModel(len(vocab), embedding_dim)
     model.to(device)
 
-    optimizer = SGD(model.parameters(), lr=1)
+    optimizer = Adam(model.parameters())
     for epoch in range(num_epoch):
         total_loss = 0
         for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
@@ -266,7 +266,7 @@ def train_sg():
     device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
     model = SkipGramModel(len(vocab), embedding_dim)
     model.to(device)
-    optimizer = SGD(model.parameters(), lr=1)
+    optimizer = Adam(model.parameters(), lr=1)
 
     for epoch in range(num_epoch):
         total_loss = 0
@@ -281,7 +281,27 @@ def train_sg():
         print(f"Loss: {total_loss.item():.2f}")
 
 
-if __name__ == '__main__':
+def find_nearest(key, vocab, embedding_weights, top_k=3):
+    idx = vocab[key]
+
+    embed = embedding_weights[idx]
+    embed = embed.reshape((-1, 1))
+
+    score = embedding_weights @ embed
+    score = score.squeeze()
+
+    count = 0
+    for i in (-score).argsort():
+        i = i.item()
+        if vocab.token(i) == key:
+            continue
+        print('{0}: {1}'.format(vocab.token(i), score[i]))
+        count += 1
+        if count == top_k:
+            break
+
+
+def search(search_key):
     min_freq = 5  # 保留单词最少出现的次数
     embedding_dim = 64
 
@@ -294,26 +314,8 @@ if __name__ == '__main__':
 
     s = cupy.sqrt((weight * weight).sum(1))
     weight /= s.reshape((s.shape[0], 1))  # normalize
+    find_nearest(search_key, vocab, weight, topk=5)
 
-    key = '大闹'
-    idx = vocab[key]
 
-    embed = weight[idx]
-    embed = embed.reshape((-1, 1))
-    print(embed.shape)
-
-    print(weight.shape)
-
-    score = weight @ embed
-    score = score.squeeze()
-    print(f'score shape:{len(score)}')
-
-    count = 0
-    for i in (-score).argsort():
-        i = i.item()
-        if vocab.token(i) == key:
-            continue
-        print('{0}: {1}'.format(vocab.token(i), score[i]))
-        count += 1
-        if count == 5:
-            break
+if __name__ == '__main__':
+    train_cbow()

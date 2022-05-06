@@ -7,6 +7,7 @@ from typing import Union, Tuple, Any
 
 import numpy as np
 
+from metagrad import cuda
 from metagrad.cuda import (
     Device,
     get_device_from_array,
@@ -15,7 +16,7 @@ from metagrad.cuda import (
     GpuDevice,
     check_cuda_available,
     get_gpu_device_or_current,
-    using_device
+    using_device, get_array_module
 )
 
 _type = np.float32
@@ -37,21 +38,19 @@ def ensure_array(arrayable: Arrayable, dtype=None, device=None) -> NdArray:
     :param dtype:
     :return:
     """
-
     if device is not None:
         xp = device.xp
     else:
         xp = np
 
-    if isinstance(arrayable, Number):
-        if dtype is None:
-            dtype = type(arrayable)
-        return xp.array(arrayable, dtype=dtype)
-    elif isinstance(arrayable, list):
+    if isinstance(arrayable, (Number, list)):
         # 让xp自己判断数据类型
         return xp.array(arrayable, dtype=dtype)
-    else:
-        return arrayable
+    elif isinstance(arrayable, (np.ndarray, cuda.ndarray)):
+        if device is not None and get_array_module(arrayable) != xp:
+            return device.transfer(arrayable)
+
+    return arrayable
 
 
 Tensorable = Union["Tensor", Number, NdArray]
@@ -290,11 +289,11 @@ class Tensor:
 
     @classmethod
     def zeros(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
-        return cls(np.zeros(shape, dtype=dtype), device=device, **kwargs)
+        return cls(np.zeros(*shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
     def zeros_like(cls, t: "Tensor", **kwargs) -> "Tensor":
-        return cls.zeros(t.shape, t.dtype, t.device, **kwargs)
+        return cls.zeros(t.shape, dtype=t.dtype, device=t.device, **kwargs)
 
     @classmethod
     def ones(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
