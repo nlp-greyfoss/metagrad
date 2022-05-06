@@ -172,11 +172,10 @@ class GpuDevice(Device):
             raise TypeError(
                 f'Actual type{type(array)} cannot be converted to cupy.ndarray'
             )
-        with self.device:
-            if is_numpy:
-                return cupy.asarray(array)
-            # 拷贝到此设备
-            return cupy.array(array, copy=True)
+        if is_numpy:
+            return cupy.asarray(array)
+        # 拷贝到此设备
+        return cupy.array(array, copy=True)
 
     def __eq__(self, other):
         return isinstance(other, GpuDevice) and other.device == self.device
@@ -192,13 +191,6 @@ def is_available():
 def check_cuda_available():
     if not gpu_available:
         raise RuntimeError('Install cupy first.')
-
-
-def device_count():
-    if not is_available():
-        return 0
-    return cuda.device_count()
-
 
 def get_device(device_desc) -> Device:
     '''

@@ -6,7 +6,7 @@ with open(os.path.join(directory, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
 setup(name='metagrad',
-      version='0.0.1',
+      version='0.0.2',
       description='一个用于学习的仿Pytorch纯Python实现的自动求导工具。',
       author='nlp-greyfoss',
       license='MIT',
