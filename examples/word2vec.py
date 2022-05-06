@@ -205,7 +205,7 @@ def train_cbow():
     embedding_dim = 64
     window_size = 3
     batch_size = 1024
-    num_epoch = 10
+    num_epoch = 100
     min_freq = 3  # 保留单词最少出现的次数
 
     corpus, vocab = load_corpus('data/xiyouji.txt', min_freq)
@@ -218,7 +218,7 @@ def train_cbow():
         shuffle=True
     )
 
-    device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
+    device = cuda.get_device("cuda:1" if cuda.is_available() else "cpu")
 
     print(f'current device:{device}')
 
@@ -263,7 +263,7 @@ def train_sg():
 
     loss_func = CrossEntropyLoss()
     # 构建Skip-gram模型，并加载至device
-    device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
+    device = cuda.get_device("cuda:1" if cuda.is_available() else "cpu")
     model = SkipGramModel(len(vocab), embedding_dim)
     model.to(device)
     optimizer = Adam(model.parameters(), lr=1)
