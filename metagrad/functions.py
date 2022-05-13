@@ -1,4 +1,4 @@
-from typing import Tuple, Any
+from typing import Tuple, Any, Union, List
 
 import numpy as np
 from numpy import ndarray
@@ -202,6 +202,45 @@ class Embedding(Function):
 
 def embedding(weight: Tensor, indices: Tensor) -> Tensor:
     return Embedding.apply(Embedding, weight, indices)
+
+
+class Split(Function):
+    '''Stack的逆操作'''
+
+    def forward(ctx, inputs: NdArray, axis: int) -> NdArray:
+        xp = get_array_module(inputs)
+        xs = xp.split(inputs, inputs.shape[axis], axis)
+        ys = [xp.squeeze(y, axis) for y in xs]  # 去掉维度axis
+        ctx.save_for_backward(xp, ys[0].shape, axis)
+
+        return tuple(ys)
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        # TODO 测试反向传播
+        xp, shape, axis = ctx.saved_tensors
+        bigger_grad = [xp.zeros(shape) if g is None else g for g in grad]
+        return stack(bigger_grad, axis)
+
+
+def split(x, axis=0):
+    return Split().apply(Split, x, axis=axis)
+
+
+class Stack(Function):
+    def forward(ctx, *inputs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int) -> NdArray:
+        xp = get_array_module(inputs[0])
+        ret = xp.stack(inputs, axis=axis)
+        ctx.save_for_backward(axis)
+        return ret
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        axis, = ctx.saved_tensors
+        # todo 支持gpu
+        return split(Tensor(grad), axis)
+
+
+def stack(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
+    return Stack().apply(Stack, *xs, axis=axis)
 
 
 # 简单的norm实现

@@ -77,8 +77,8 @@ class SGD(Optimizer):
 
 
 class Adam(Optimizer):
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8):
-        defaults = dict(lr=lr, betas=betas, eps=eps)
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, amsgrad=False):
+        defaults = dict(lr=lr, betas=betas, eps=eps, amsgrad=amsgrad)
         super().__init__(params, defaults)
         self.state = defaultdict(dict)
 
@@ -92,6 +92,7 @@ class Adam(Optimizer):
                 state_steps = []
                 exp_avgs = []
                 exp_avg_sqs = []
+                max_exp_avg_sqs = []
 
                 params = group['params']
 
@@ -104,6 +105,12 @@ class Adam(Optimizer):
                         state['step'] = Tensor(0)
                         state['exp_avg'] = Tensor.zeros_like(p)  # m
                         state['exp_avg_sq'] = Tensor.zeros_like(p)  # v
+
+                        if group['amsgrad']:
+                            state['max_exp_avg_sq'] = Tensor.zeros_like(p)
+
+                    if group['amsgrad']:
+                        max_exp_avg_sqs.append(state['max_exp_avg_sq'])
 
                     state_steps.append(state['step'])
                     exp_avgs.append(state['exp_avg'])
@@ -119,9 +126,15 @@ class Adam(Optimizer):
                     bias_correction1 = 1 - beta1 ** step
                     bias_correction2 = 1 - beta2 ** step
 
-                    a = lr * math.sqrt(bias_correction2) / bias_correction1
-
                     exp_avgs[i] = beta1 * exp_avgs[i] + (1.0 - beta1) * grad
                     exp_avg_sqs[i] = beta2 * exp_avg_sqs[i] + (1.0 - beta2) * grad * grad
 
-                    p -= a * exp_avgs[i] / (exp_avg_sqs[i].sqrt() + eps)
+                    if group['amsgrad']:
+                        max_exp_avg_sqs[i] = max(max_exp_avg_sqs[i], exp_avg_sqs[i])
+                        denom = (max_exp_avg_sqs[i].sqrt() / math.sqrt(bias_correction2)).add_(eps)
+
+                    else:
+                        denom = exp_avg_sqs[i].sqrt() / math.sqrt(bias_correction2)
+                    step_size = lr / bias_correction1
+
+                    p -= step_size * exp_avgs[i] / (denom + eps)

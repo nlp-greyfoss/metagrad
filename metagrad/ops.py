@@ -41,12 +41,26 @@ class Function:
         '''与PyTorch一样，我们也不直接调用forward，而是调用此方法'''
         # 先调用构造函数，传入运算依赖的Tensor
         ctx = fxn(*xs)  # 调用到了_Function的__init__方法
-        # [t.data for t in xs]遍历Tensor中的data(NdArray)值，参与实际计算的都是NumPy的数组。
-        ret = Tensor(ctx.forward(ctx, *[t.data for t in xs], **kwargs),
-                     requires_grad=any([t.requires_grad for t in xs]))
 
-        if ret.requires_grad:
-            ret._ctx = ctx
+        # [t.data for t in xs]遍历Tensor中的data(NdArray)值，参与实际计算的都是NumPy的数组。
+        ret = ctx.forward(ctx, *[t.data for t in xs], **kwargs)
+
+        requires_grad = any([t.requires_grad for t in xs])
+
+        is_tuple = isinstance(ret, tuple)
+
+        # 输出可能为元组
+        if is_tuple:
+            ret = tuple([Tensor(t, requires_grad=requires_grad) for t in ret])
+        else:
+            ret = Tensor(ret, requires_grad=requires_grad)
+
+        if requires_grad:
+            if is_tuple:
+                for t in ret:
+                    t._ctx = ctx
+            else:
+                ret._ctx = ctx
 
         return ret
 
@@ -177,7 +191,8 @@ class Mean(Function):
 
 class Max(Function):
     def forward(ctx, x: NdArray, axis=None, keepdims=False) -> NdArray:
-        ret = np.amax(x, axis=axis, keepdims=keepdims)
+        xp = get_array_module(x)
+        ret = xp.amax(x, axis=axis, keepdims=keepdims)
         ctx.save_for_backward(x, axis, ret, keepdims)
         return ret
 
@@ -190,13 +205,13 @@ class Max(Function):
 
 class Clip(Function):
     def forward(ctx, x: NdArray, x_min=None, x_max=None) -> NdArray:
+        xp = get_array_module(x)
         if x_min is None:
-            x_min = np.min(x)
+            x_min = xp.min(x)
         if x_max is None:
-            x_max = np.max(x)
+            x_max = xp.max(x)
 
         ctx.save_for_backward(x, x_min, x_max)
-        xp = get_array_module(x)
         return xp.clip(x, x_min, x_max)
 
     def backward(ctx, grad: NdArray) -> NdArray:
