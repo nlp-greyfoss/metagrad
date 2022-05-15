@@ -4,6 +4,7 @@ from tqdm import tqdm
 from metagrad import Tensor
 from utils import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN
 from metagrad.dataset import Dataset
+import metagrad.functions as F
 
 
 class SGNSDataset(Dataset):
@@ -39,8 +40,8 @@ class SGNSDataset(Dataset):
         return self.data[i]
 
     def collate_fn(self, examples):
-        words = np.asarray([ex[0] for ex in examples])
-        contexts = np.asarray([ex[1] for ex in examples])
+        words = Tensor([ex[0] for ex in examples])
+        contexts = Tensor([ex[1] for ex in examples])
 
         batch_size, window_size = contexts.shape
         neg_contexts = []
@@ -49,6 +50,5 @@ class SGNSDataset(Dataset):
             # 保证负样本不包含当前样本中的context
             ns_dist = self.ns_dist.index_fill(0, contexts[i], .0)
             neg_contexts.append(multinomial(ns_dist, self.n_negatives * window_size, replacement=True))
-        neg_contexts = stack(neg_contexts, dim=0)
+        neg_contexts = F.stack(neg_contexts, axis=0)
         return words, contexts, neg_contexts
-

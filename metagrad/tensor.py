@@ -271,16 +271,19 @@ class Tensor:
         return self.array().squeeze()
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
-        with using_device(self.device):
-            xp = self.device.xp
-            self.data = xp.random.uniform(low, high, size=self.shape)
-            return self
+        xp = self.device.xp
+        self.data = xp.random.uniform(low, high, size=self.shape)
+        return self
 
     def normal_(self, mean: float = 0.0, std: float = 1.0) -> "Tensor":
-        with using_device(self.device):
-            xp = self.device.xp
-            self.data = xp.random.normal(mean, std, size=self.shape)
-            return self
+        xp = self.device.xp
+        self.data = xp.random.normal(mean, std, size=self.shape)
+        return self
+
+    def index_fill_(self, dim: int, index: "Tensor", value: float) -> "Tensor":
+        xp = self.device.xp
+        xp.put_along_axis(self.data, index.data[:, None], value, axis=dim)
+        return self
 
     # ****创造帮助函数****
     @classmethod

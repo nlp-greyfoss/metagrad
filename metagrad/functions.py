@@ -211,14 +211,14 @@ class Split(Function):
         xp = get_array_module(inputs)
         xs = xp.split(inputs, inputs.shape[axis], axis)
         ys = [xp.squeeze(y, axis) for y in xs]  # 去掉维度axis
-        ctx.save_for_backward(xp, ys[0].shape, axis)
+        ctx.save_for_backward(len(ys), axis)
 
         return tuple(ys)
 
     def backward(ctx, grad: NdArray) -> NdArray:
-        # TODO 测试反向传播
-        xp, shape, axis = ctx.saved_tensors
-        bigger_grad = [xp.zeros(shape) if g is None else g for g in grad]
+        size, axis = ctx.saved_tensors
+        grad /= size
+        bigger_grad = [Tensor(grad)] * size
         return stack(bigger_grad, axis)
 
 

@@ -25,4 +25,6 @@ def test_simple_split():
     (my[0] + my[1]).sum().backward()
     (ty[0] + ty[1]).sum().backward()
 
-    # assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad.data, tx.grad.data)
+
+
