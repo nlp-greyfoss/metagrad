@@ -3,7 +3,7 @@ import importlib
 import inspect
 import time
 from numbers import Number
-from typing import Union, Tuple, Any
+from typing import Union, Tuple, Any, List
 
 import numpy as np
 
@@ -16,7 +16,7 @@ from metagrad.cuda import (
     GpuDevice,
     check_cuda_available,
     get_gpu_device_or_current,
-    using_device, get_array_module
+    get_array_module
 )
 
 _type = np.float32
@@ -29,7 +29,7 @@ np.set_printoptions(suppress=True)
 NdArray = Union['np.ndarray', 'cuda.ndarray']
 
 # 可以转换为数组的类型
-Arrayable = Union[Number, NdArray]
+Arrayable = Union[Number, NdArray, List]
 
 
 def ensure_array(arrayable: Arrayable, dtype=None, device=None) -> NdArray:
@@ -329,6 +329,37 @@ class Tensor:
     def uniform(cls, *shape, low: float = -1.0, high: float = 1.0,
                 dtype=_type, device=None, **kwargs) -> "Tensor":
         return cls((np.random.uniform(low, high, size=shape)).astype(dtype), device=device, **kwargs)
+
+    @classmethod
+    def multinomial(cls, input: "Tensor", num_samples: int, replace=False) -> "Tensor":
+        '''
+        返回一个Tensor，每行包含num_samples个索引，从基于input对应行的多项式概率分布采样而来
+        Args:
+            input: 包含概率的输入，如果不是概率，那么会自动转换为概率
+            num_samples: 生成的样本数
+            replace: 是否为放回采样，默认为False
+        '''
+
+        size = input.size(-1)
+
+        assert replace or num_samples <= size, "cannot sample n_sample > input.size(-1) samples without replacement"
+        assert input.ndim <= 2, "prob_dist must be 1 or 2 dim"
+
+        p = input.data / input.data.sum(-1, keepdims=True)
+        print(f'p:{p}')
+        xp = input.xp
+
+        # 基于numpy.random.choice来实现multinomial
+        if input.ndim == 1:
+            return Tensor(xp.random.choice(xp.arange(size), replace=replace, size=num_samples, p=p),
+                          device=input.device)
+        else:
+            # 如果input是2D，那么当成1D列表来处理
+            ret = []
+            for i in range(input.shape[0]):
+                ret.append(xp.random.choice(xp.arange(size), replace=replace, size=num_samples, p=p[i]).tolist())
+
+            return Tensor(ret, device=input.device)
 
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
