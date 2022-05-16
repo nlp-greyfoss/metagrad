@@ -48,7 +48,7 @@ class SGNSDataset(Dataset):
         # 对batch内的样本分别进行负采样
         for i in range(batch_size):
             # 保证负样本不包含当前样本中的context
-            ns_dist = self.ns_dist.index_fill(0, contexts[i], .0)
+            ns_dist = self.ns_dist.index_fill_(0, contexts[i], .0)
             neg_contexts.append(multinomial(ns_dist, self.n_negatives * window_size, replacement=True))
         neg_contexts = F.stack(neg_contexts, axis=0)
         return words, contexts, neg_contexts

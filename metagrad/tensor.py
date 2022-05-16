@@ -282,7 +282,13 @@ class Tensor:
 
     def index_fill_(self, dim: int, index: "Tensor", value: float) -> "Tensor":
         xp = self.device.xp
-        xp.put_along_axis(self.data, index.data[:, None], value, axis=dim)
+        index = index.data
+
+        axis = list(range(self.ndim))
+        axis.remove(dim)
+        # 扩展索引，put_along_axis需要索引数组和原数组维度一致
+        index = xp.expand_dims(index, axis=axis)
+        xp.put_along_axis(self.data, index, value, axis=dim)
         return self
 
     # ****创造帮助函数****
