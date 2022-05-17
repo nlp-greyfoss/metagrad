@@ -266,12 +266,12 @@ class Tensor:
     def item(self) -> Number:
         '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
-
-    def squeeze(self, axis=None) -> "Tensor":
-        return Tensor(self.array().squeeze(axis=axis), device=self.device, requires_grad=self.requires_grad)
-
-    def unsqueeze(self, axis=Union[int, Tuple]) -> "Tensor":
-        return Tensor(self.xp.expand_dims(self.array(), axis), device=self.device, requires_grad=self.requires_grad)
+    #
+    # def squeeze(self, axis=None) -> "Tensor":
+    #     return Tensor(self.array().squeeze(axis=axis), device=self.device, requires_grad=self.requires_grad)
+    #
+    # def unsqueeze(self, axis=Union[int, Tuple]) -> "Tensor":
+    #     return Tensor(self.xp.expand_dims(self.array(), axis), device=self.device, requires_grad=self.requires_grad)
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
         xp = self.device.xp

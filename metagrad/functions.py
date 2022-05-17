@@ -247,6 +247,68 @@ def stack(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
     return Stack().apply(Stack, *xs, axis=axis)
 
 
+def argone(shape):
+    '''
+    找到之前维度大小为1的dim
+    '''
+    result = []
+    for i, s in enumerate(shape):
+        if s == 1:
+            result.append(i)
+    return result
+
+
+class Squeeze(Function):
+    def forward(ctx, x: NdArray, axis: Union[int, Tuple, None] = None) -> NdArray:
+        xp = get_array_module(x)
+        ctx.save_for_backward(x.shape, axis)
+
+        return xp.squeeze(x, axis)
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        x_shape, axis = ctx.saved_tensors
+
+        if axis is None:
+            axis = tuple(argone(x_shape))
+        else:
+            ndim = len(x_shape)
+            if isinstance(axis, int):
+                axis = [axis]
+            # 支持 -1 类似这种索引
+            axis = [x + ndim if x < 0 else x for x in axis]
+            axis.sort()
+
+        shape = list(grad.shape)
+        for x in axis:
+            # 在索引x处插入1
+            shape.insert(x, 1)
+        # 使得形状一致
+        return grad.reshape(shape)
+
+
+def squeeze(x: Tensor, axis=None):
+    return Squeeze().apply(Squeeze, x, axis=axis)
+
+
+class UnSqueeze(Function):
+    def forward(ctx, x: NdArray, axis: int) -> NdArray:
+        xp = get_array_module(x)
+        ctx.save_for_backward(x.shape)
+
+        return xp.expand_dims(x, axis)
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        x_shape, = ctx.saved_tensors
+        return grad.reshape(x_shape)
+
+
+def unsqueeze(x: Tensor, axis: int):
+    '''
+    返回一个新Tensor，在axis处插入维度1
+    '''
+    return UnSqueeze().apply(UnSqueeze, x, axis=axis)
+
+
 # 简单的norm实现
 def norm(input: Tensor, p: int = 2, axis=None, keepdims=False):
     assert p in (1, 2), "Only support L2 normalization(p=2) and L1 normalization(p=1)"

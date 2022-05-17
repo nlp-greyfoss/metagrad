@@ -1,4 +1,4 @@
-from typing import Any, Tuple
+from typing import Any, Tuple, Union
 
 import numpy as np
 
@@ -311,6 +311,17 @@ class Sqrt(Function):
     def backward(ctx, grad: NdArray) -> NdArray:
         ret, = ctx.saved_tensors
         return grad / (ret * 2.0)
+
+
+def argone(shape):
+    '''
+    找到之前维度大小为1的dim
+    '''
+    result = []
+    for i, s in enumerate(shape):
+        if s == 1:
+            result.append(i)
+    return result
 
 
 # ****变形和切片****

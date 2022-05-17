@@ -7,7 +7,6 @@ from matplotlib import pyplot as plt
 
 import metagrad.module as nn
 from metagrad.dataloader import DataLoader
-from metagrad.dataset import TensorDataset
 from metagrad.optim import Optimizer
 from metagrad.tensor import Tensor
 
