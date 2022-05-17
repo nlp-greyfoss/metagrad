@@ -267,8 +267,11 @@ class Tensor:
         '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
 
-    def squeeze(self) -> Any:
-        return self.array().squeeze()
+    def squeeze(self, axis=None) -> "Tensor":
+        return Tensor(self.array().squeeze(axis=axis), device=self.device, requires_grad=self.requires_grad)
+
+    def unsqueeze(self, axis=Union[int, Tuple]) -> "Tensor":
+        return Tensor(self.xp.expand_dims(self.array(), axis), device=self.device, requires_grad=self.requires_grad)
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
         xp = self.device.xp
@@ -346,7 +349,6 @@ class Tensor:
         assert input.ndim <= 2, "prob_dist must be 1 or 2 dim"
 
         p = input.data / input.data.sum(-1, keepdims=True)
-        print(f'p:{p}')
         xp = input.xp
 
         # 基于numpy.random.choice来实现multinomial
@@ -364,6 +366,11 @@ class Tensor:
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
         return self.slice(idxs)
+
+    def __setitem__(self, key, value):
+        self.data[key] = value.item()
+        # self._grad = None
+        return self
 
     @property
     def T(self) -> "Tensor":
@@ -463,9 +470,8 @@ def register(name, fxn):
 
     if name in ["pow", "neg", "abs"]:
         setattr(Tensor, f"__{name}__", dispatch)
-    else:
-        # 为Tensor添加属性，名为name，值为dispatch函数引用
-        setattr(Tensor, name, dispatch)
+    # 为Tensor添加属性，名为name，值为dispatch函数引用
+    setattr(Tensor, name, dispatch)
 
     # 这几个方法都有__xx__, __ixx__, __rxx__ 魔法方法
     if name in ["add", "sub", "mul", "truediv", "matmul"]:

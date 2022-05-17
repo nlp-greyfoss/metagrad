@@ -60,6 +60,10 @@ def sigmoid(x: Tensor) -> Tensor:
     return 1 / (1 + (-x).exp())
 
 
+def logsigmoid(x: Tensor) -> Tensor:
+    return sigmoid(x).log()
+
+
 # def relu(x: Tensor) -> Tensor:
 #     return x * (x > 0)
 def relu(x: Tensor) -> Tensor:
