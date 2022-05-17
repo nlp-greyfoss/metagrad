@@ -465,7 +465,7 @@ def register(name, fxn):
                 break
         # 把所有的输入都转换为Tensor
         xs = [ensure_tensor(x, device) for x in xs]
-        
+
         return fxn.apply(fxn, *xs, **kwargs)
 
     if name in ["pow", "neg", "abs"]:
