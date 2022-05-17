@@ -266,6 +266,7 @@ class Tensor:
     def item(self) -> Number:
         '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
+
     #
     # def squeeze(self, axis=None) -> "Tensor":
     #     return Tensor(self.array().squeeze(axis=axis), device=self.device, requires_grad=self.requires_grad)
@@ -455,16 +456,9 @@ class Tensor:
 
 def register(name, fxn):
     def dispatch(*xs, **kwargs):
-        device = CpuDevice()
-
-        for x in xs:
-            gpu_device = GpuDevice.from_array(x.data if isinstance(x, Tensor) else x)
-            if gpu_device is not None:
-                device = gpu_device
-                break
+        device = [x for x in xs if isinstance(x, Tensor)][0].device
         # 把所有的输入都转换为Tensor
-
-        xs = [ensure_tensor(x, device) for x in xs]
+        xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
         # 调用apply方法
         return fxn.apply(fxn, *xs, **kwargs)
 
