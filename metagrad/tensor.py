@@ -456,10 +456,16 @@ class Tensor:
 
 def register(name, fxn):
     def dispatch(*xs, **kwargs):
-        device = [x for x in xs if isinstance(x, Tensor)][0].device
+
+        device = CpuDevice()
+        for x in xs:
+            gpu_device = GpuDevice.from_array(x.data if isinstance(x, Tensor) else x)
+            if gpu_device is not None:
+                device = gpu_device
+                break
         # 把所有的输入都转换为Tensor
-        xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
-        # 调用apply方法
+        xs = [ensure_tensor(x, device) for x in xs]
+        
         return fxn.apply(fxn, *xs, **kwargs)
 
     if name in ["pow", "neg", "abs"]:
