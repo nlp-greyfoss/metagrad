@@ -1,4 +1,4 @@
-from typing import Tuple, Any
+from typing import Tuple, Any, Union, List
 
 import numpy as np
 from numpy import ndarray
@@ -58,6 +58,10 @@ def logsumexp(x: Tensor, axis=-1):
 
 def sigmoid(x: Tensor) -> Tensor:
     return 1 / (1 + (-x).exp())
+
+
+def logsigmoid(x: Tensor) -> Tensor:
+    return sigmoid(x).log()
 
 
 # def relu(x: Tensor) -> Tensor:
@@ -202,6 +206,107 @@ class Embedding(Function):
 
 def embedding(weight: Tensor, indices: Tensor) -> Tensor:
     return Embedding.apply(Embedding, weight, indices)
+
+
+class Split(Function):
+    '''Stack的逆操作'''
+
+    def forward(ctx, inputs: NdArray, axis: int) -> NdArray:
+        xp = get_array_module(inputs)
+        xs = xp.split(inputs, inputs.shape[axis], axis)
+        ys = [xp.squeeze(y, axis) for y in xs]  # 去掉维度axis
+        ctx.save_for_backward(len(ys), axis)
+
+        return tuple(ys)
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        size, axis = ctx.saved_tensors
+        grad /= size
+        bigger_grad = [Tensor(grad)] * size
+        return stack(bigger_grad, axis)
+
+
+def split(x, axis=0):
+    return Split().apply(Split, x, axis=axis)
+
+
+class Stack(Function):
+    def forward(ctx, *inputs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int) -> NdArray:
+        xp = get_array_module(inputs[0])
+        ret = xp.stack(inputs, axis=axis)
+        ctx.save_for_backward(axis)
+        return ret
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        axis, = ctx.saved_tensors
+        # todo 支持gpu
+        return split(Tensor(grad), axis)
+
+
+def stack(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
+    return Stack().apply(Stack, *xs, axis=axis)
+
+
+def argone(shape):
+    '''
+    找到之前维度大小为1的dim
+    '''
+    result = []
+    for i, s in enumerate(shape):
+        if s == 1:
+            result.append(i)
+    return result
+
+
+class Squeeze(Function):
+    def forward(ctx, x: NdArray, axis: Union[int, Tuple, None] = None) -> NdArray:
+        xp = get_array_module(x)
+        ctx.save_for_backward(x.shape, axis)
+
+        return xp.squeeze(x, axis)
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        x_shape, axis = ctx.saved_tensors
+
+        if axis is None:
+            axis = tuple(argone(x_shape))
+        else:
+            ndim = len(x_shape)
+            if isinstance(axis, int):
+                axis = [axis]
+            # 支持 -1 类似这种索引
+            axis = [x + ndim if x < 0 else x for x in axis]
+            axis.sort()
+
+        shape = list(grad.shape)
+        for x in axis:
+            # 在索引x处插入1
+            shape.insert(x, 1)
+        # 使得形状一致
+        return grad.reshape(shape)
+
+
+def squeeze(x: Tensor, axis=None):
+    return Squeeze().apply(Squeeze, x, axis=axis)
+
+
+class UnSqueeze(Function):
+    def forward(ctx, x: NdArray, axis: int) -> NdArray:
+        xp = get_array_module(x)
+        ctx.save_for_backward(x.shape)
+
+        return xp.expand_dims(x, axis)
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        x_shape, = ctx.saved_tensors
+        return grad.reshape(x_shape)
+
+
+def unsqueeze(x: Tensor, axis: int):
+    '''
+    返回一个新Tensor，在axis处插入维度1
+    '''
+    return UnSqueeze().apply(UnSqueeze, x, axis=axis)
 
 
 # 简单的norm实现

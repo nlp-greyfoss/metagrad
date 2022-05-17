@@ -3,7 +3,7 @@ import importlib
 import inspect
 import time
 from numbers import Number
-from typing import Union, Tuple, Any
+from typing import Union, Tuple, Any, List
 
 import numpy as np
 
@@ -16,7 +16,7 @@ from metagrad.cuda import (
     GpuDevice,
     check_cuda_available,
     get_gpu_device_or_current,
-    using_device, get_array_module
+    get_array_module
 )
 
 _type = np.float32
@@ -29,7 +29,7 @@ np.set_printoptions(suppress=True)
 NdArray = Union['np.ndarray', 'cuda.ndarray']
 
 # 可以转换为数组的类型
-Arrayable = Union[Number, NdArray]
+Arrayable = Union[Number, NdArray, List]
 
 
 def ensure_array(arrayable: Arrayable, dtype=None, device=None) -> NdArray:
@@ -267,20 +267,33 @@ class Tensor:
         '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
 
-    def squeeze(self) -> Any:
-        return self.array().squeeze()
+    #
+    # def squeeze(self, axis=None) -> "Tensor":
+    #     return Tensor(self.array().squeeze(axis=axis), device=self.device, requires_grad=self.requires_grad)
+    #
+    # def unsqueeze(self, axis=Union[int, Tuple]) -> "Tensor":
+    #     return Tensor(self.xp.expand_dims(self.array(), axis), device=self.device, requires_grad=self.requires_grad)
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
-        with using_device(self.device):
-            xp = self.device.xp
-            self.data = xp.random.uniform(low, high, size=self.shape)
-            return self
+        xp = self.device.xp
+        self.data = xp.random.uniform(low, high, size=self.shape)
+        return self
 
     def normal_(self, mean: float = 0.0, std: float = 1.0) -> "Tensor":
-        with using_device(self.device):
-            xp = self.device.xp
-            self.data = xp.random.normal(mean, std, size=self.shape)
-            return self
+        xp = self.device.xp
+        self.data = xp.random.normal(mean, std, size=self.shape)
+        return self
+
+    def index_fill_(self, dim: int, index: "Tensor", value: float) -> "Tensor":
+        xp = self.device.xp
+        index = index.data
+
+        axis = list(range(self.ndim))
+        axis.remove(dim)
+        # 扩展索引，put_along_axis需要索引数组和原数组维度一致
+        index = xp.expand_dims(index, axis=axis)
+        xp.put_along_axis(self.data, index, value, axis=dim)
+        return self
 
     # ****创造帮助函数****
     @classmethod
@@ -321,9 +334,44 @@ class Tensor:
                 dtype=_type, device=None, **kwargs) -> "Tensor":
         return cls((np.random.uniform(low, high, size=shape)).astype(dtype), device=device, **kwargs)
 
+    @classmethod
+    def multinomial(cls, input: "Tensor", num_samples: int, replace=False) -> "Tensor":
+        '''
+        返回一个Tensor，每行包含num_samples个索引，从基于input对应行的多项式概率分布采样而来
+        Args:
+            input: 包含概率的输入，如果不是概率，那么会自动转换为概率
+            num_samples: 生成的样本数
+            replace: 是否为放回采样，默认为False
+        '''
+
+        size = input.size(-1)
+
+        assert replace or num_samples <= size, "cannot sample n_sample > input.size(-1) samples without replacement"
+        assert input.ndim <= 2, "prob_dist must be 1 or 2 dim"
+
+        p = input.data / input.data.sum(-1, keepdims=True)
+        xp = input.xp
+
+        # 基于numpy.random.choice来实现multinomial
+        if input.ndim == 1:
+            return Tensor(xp.random.choice(xp.arange(size), replace=replace, size=num_samples, p=p),
+                          device=input.device)
+        else:
+            # 如果input是2D，那么当成1D列表来处理
+            ret = []
+            for i in range(input.shape[0]):
+                ret.append(xp.random.choice(xp.arange(size), replace=replace, size=num_samples, p=p[i]).tolist())
+
+            return Tensor(ret, device=input.device)
+
     # 切片操作
     def __getitem__(self, idxs) -> "Tensor":
         return self.slice(idxs)
+
+    def __setitem__(self, key, value):
+        self.data[key] = value.item()
+        # self._grad = None
+        return self
 
     @property
     def T(self) -> "Tensor":
@@ -408,24 +456,16 @@ class Tensor:
 
 def register(name, fxn):
     def dispatch(*xs, **kwargs):
-        device = CpuDevice()
-
-        for x in xs:
-            gpu_device = GpuDevice.from_array(x.data if isinstance(x, Tensor) else x)
-            if gpu_device is not None:
-                device = gpu_device
-                break
+        device = [x for x in xs if isinstance(x, Tensor)][0].device
         # 把所有的输入都转换为Tensor
-
-        xs = [ensure_tensor(x, device) for x in xs]
+        xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
         # 调用apply方法
         return fxn.apply(fxn, *xs, **kwargs)
 
     if name in ["pow", "neg", "abs"]:
         setattr(Tensor, f"__{name}__", dispatch)
-    else:
-        # 为Tensor添加属性，名为name，值为dispatch函数引用
-        setattr(Tensor, name, dispatch)
+    # 为Tensor添加属性，名为name，值为dispatch函数引用
+    setattr(Tensor, name, dispatch)
 
     # 这几个方法都有__xx__, __ixx__, __rxx__ 魔法方法
     if name in ["add", "sub", "mul", "truediv", "matmul"]:
