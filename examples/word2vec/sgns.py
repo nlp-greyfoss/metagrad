@@ -4,6 +4,7 @@ from tqdm import tqdm
 from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.optim import SGD
+from metagrad.tensor import debug_mode
 from utils import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN, load_corpus
 from metagrad.dataset import Dataset
 import metagrad.functions as F
@@ -137,16 +138,17 @@ if __name__ == '__main__':
     model.to(device)
 
     optimizer = SGD(model.parameters())
-    for epoch in range(num_epoch):
-        total_loss = 0
-        for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
-            words, contexts, neg_contexts = [x.to(device) for x in batch]
-            optimizer.zero_grad()
-            loss = model(words, contexts, neg_contexts)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item()
+    with debug_mode():
+        for epoch in range(num_epoch):
+            total_loss = 0
+            for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
+                words, contexts, neg_contexts = [x.to(device) for x in batch]
+                optimizer.zero_grad()
+                loss = model(words, contexts, neg_contexts)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
 
-        print(f'Loss: {total_loss:.2f}')
+            print(f'Loss: {total_loss:.2f}')
 
     model.save()

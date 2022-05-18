@@ -2,6 +2,7 @@ import contextlib
 import importlib
 import inspect
 import time
+import os
 from numbers import Number
 from typing import Union, Tuple, Any, List
 
@@ -100,10 +101,12 @@ class OpWrapper:
     支持反向传播的Debug
     '''
 
-    def __init__(self, name, xs, backward=False, threshold=0):
+    def __init__(self, name, xs, backward=False):
         self.name = f"back_{name}" if backward else name
         self.xs = xs
         self.output = None
+        threshold = int(os.getenv('THRESHOLD', 0))
+
         self.threshold = threshold
 
     def __enter__(self):

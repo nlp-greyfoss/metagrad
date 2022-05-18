@@ -7,7 +7,8 @@ from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
 from metagrad.init import uniform_
 from metagrad.loss import CrossEntropyLoss
-from metagrad.optim import Adam
+from metagrad.optim import SGD
+from metagrad.tensor import debug_mode
 from utils import BOS_TOKEN, EOS_TOKEN, WEIGHT_INIT_RANGE, load_corpus
 
 
@@ -83,7 +84,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    device = cuda.get_device("cuda:1" if cuda.is_available() else "cpu")
+    device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
 
     print(f'current device:{device}')
 
@@ -92,18 +93,19 @@ if __name__ == '__main__':
     model = CBOWModel(len(vocab), embedding_dim)
     model.to(device)
 
-    optimizer = Adam(model.parameters())
-    for epoch in range(num_epoch):
-        total_loss = 0
-        for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
-            inputs, targets = [x.to(device) for x in batch]
-            optimizer.zero_grad()
-            output = model(inputs)
-            loss = loss_func(output, targets)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss
+    optimizer = SGD(model.parameters())
+    with debug_mode():
+        for epoch in range(num_epoch):
+            total_loss = 0
+            for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
+                inputs, targets = [x.to(device) for x in batch]
+                optimizer.zero_grad()
+                output = model(inputs)
+                loss = loss_func(output, targets)
+                loss.backward()
+                optimizer.step()
+                total_loss += loss
 
-        print(f'Loss: {total_loss.item():.2f}')
+            print(f'Loss: {total_loss.item():.2f}')
 
     model.save()
