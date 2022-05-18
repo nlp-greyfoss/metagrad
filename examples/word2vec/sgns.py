@@ -128,7 +128,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    device = cuda.get_device("cuda:1" if cuda.is_available() else "cpu")
+    device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
 
     print(f'current device:{device}')
 
