@@ -107,8 +107,8 @@ def get_unigram_distribution(corpus, vocab_size):
 if __name__ == '__main__':
     embedding_dim = 64
     window_size = 3
-    batch_size = 1024
-    num_epoch = 10
+    batch_size = 10240
+    num_epoch = 100
     min_freq = 3  # 保留单词最少出现的次数
     n_negatives = 10  # 负采样数
 

@@ -310,10 +310,11 @@ class Tensor:
 
     @classmethod
     def ones(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
-        return cls(np.ones(shape, dtype=dtype), device=device, **kwargs)
+        return cls(np.ones(shape=shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
     def ones_like(cls, t: "Tensor", **kwargs) -> "Tensor":
+        print(f't.shape:{t.shape}')
         return cls.ones(t.shape, t.dtype, t.device, **kwargs)
 
     @classmethod
