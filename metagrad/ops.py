@@ -2,7 +2,7 @@ from typing import Any, Tuple, Union
 
 import numpy as np
 
-from metagrad.cuda import get_array_module
+from metagrad.cuda import get_array_module, ndarray
 from metagrad.tensor import Tensor, NdArray
 
 '''
@@ -90,6 +90,51 @@ def unbroadcast(grad: NdArray, in_shape: Tuple) -> NdArray:
     return grad
 
 
+def broadcast_grad_shape(original_shape, xp, grad: NdArray, axis=None, keepdims=None):
+    '''
+    在Mean、Sum、Squeeze等方法中，可能会丢失dim=1的维度，不能直接进行广播，需要调用此方法进行一些处理，广播到原来的维度
+     Args:
+         original_shape: 原来的形状
+         xp: numpy 或 cupy
+         grad: 梯度
+         axis: None 或 int 或 int元组，操作的维度
+         keepdims: 是否保存维度，如果为True，那么就不需要调用此方法了。调用此方法的目的就是得到keepdims=True的结果
+     Returns: 转换好形状并广播了的grad
+     '''
+
+    # 原来的维度数
+    ndim = len(original_shape)
+    # 如果ndim为零 或 axis 为 None 或 keepdims 为 True
+    if ndim == 0 or axis is None or keepdims:
+        # 直接进行广播即可
+        return xp.broadcast_to(grad, original_shape)
+
+    grad = grad.reshape(restore_grad_shape(original_shape, ndim, axis))
+
+    # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
+    return xp.broadcast_to(grad, original_shape)
+
+
+def restore_grad_shape(original_shape, ndim: int, axis=None):
+    '''
+       在Mean、Sum、Squeeze等方法中，可能会丢失dim=1的维度，不能直接进行广播，需要调用此方法恢复出原来的维度
+        Args:
+            original_shape: 原来的形状
+            axis: None 或 int 或 int元组，操作的维度
+        Returns: 得到keepdims=True的形状
+    '''
+    # 我们需要恢复之前的形状，得到keepdims=True的结果
+    if isinstance(axis, (np.ndarray, ndarray)):
+        axis = axis.item()
+    # 如果axis为int，变成可迭代的列表，方便统一处理
+    axis = [axis] if np.isscalar(axis) else axis
+
+    # 支持 -1(最后一个元素)这种索引，转换为正数索引
+    axis = tuple(ax % ndim for ax in axis)
+
+    return [s if ax not in axis else 1 for ax, s in enumerate(original_shape)]
+
+
 # ****二元运算****
 class Add(Function):
 
@@ -161,18 +206,8 @@ class Sum(Function):
 
     def backward(ctx, grad: NdArray) -> NdArray:
         x_shape, axis, keepdims = ctx.saved_tensors
-        # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
-        ndim = len(x_shape)
-        axis = (axis,) if np.isscalar(axis) else axis
-        if not (ndim == 0 or axis is None or keepdims):
-            actual_axis = [ax if ax > 0 else ax + ndim for ax in axis]
-            shape = list(grad.shape)
-            for ax in sorted(actual_axis):
-                shape.insert(ax, 1)
-            grad = grad.reshape(shape)
 
-        xp = get_array_module(grad)
-        return xp.broadcast_to(grad, x_shape)
+        return broadcast_grad_shape(x_shape, get_array_module(grad), grad, axis, keepdims)
 
 
 class Mean(Function):
@@ -184,31 +219,61 @@ class Mean(Function):
     def backward(ctx, grad: NdArray) -> NdArray:
         x_shape, out_shape, axis, keepdims = ctx.saved_tensors
         grad = grad * (np.prod(out_shape) / np.prod(x_shape))
-        ndim = len(x_shape)
-        axis = (axis,) if np.isscalar(axis) else axis
-        if not (ndim == 0 or axis is None or keepdims):
-            actual_axis = [ax if ax > 0 else ax + ndim for ax in axis]
-            shape = list(grad.shape)
-            for ax in sorted(actual_axis):
-                shape.insert(ax, 1)
-            grad = grad.reshape(shape)
-        # 将梯度广播成input_shape形状,梯度的维度要和输入的维度一致
-        xp = get_array_module(grad)
 
-        return xp.broadcast_to(grad, x_shape)
+        return broadcast_grad_shape(x_shape, get_array_module(grad), grad, axis, keepdims)
 
 
 class Max(Function):
     def forward(ctx, x: NdArray, axis=None, keepdims=False) -> NdArray:
+        '''
+        y = x.max()
+        '''
         xp = get_array_module(x)
-        ret = xp.amax(x, axis=axis, keepdims=keepdims)
-        ctx.save_for_backward(x, axis, ret, keepdims)
-        return ret
+        y = xp.amax(x, axis=axis, keepdims=keepdims)
+        ctx.save_for_backward(x, axis, y, keepdims)
+        return y
 
     def backward(ctx, grad: NdArray) -> NdArray:
-        x, axis, ret, keepdims = ctx.saved_tensors
-        mask = (x == ret)
-        div = mask.sum(axis=axis, keepdims=keepdims)
+        x, axis, y, keepdims = ctx.saved_tensors
+
+        if axis is None:
+            mask = (x == y)
+            div = mask.sum(axis=axis, keepdims=keepdims)
+        else:
+            shape = restore_grad_shape(x.shape, x.ndim, axis)
+            grad = grad.reshape(shape)
+            y = y.reshape(shape)
+
+            mask = (x == y)
+            div = mask.sum(axis=axis, keepdims=True)
+
+        return mask * grad / div
+
+
+class Min(Function):
+    def forward(ctx, x: NdArray, axis=None, keepdims=False) -> NdArray:
+        '''
+        y = x.min()
+        '''
+        xp = get_array_module(x)
+        y = xp.amin(x, axis=axis, keepdims=keepdims)
+        ctx.save_for_backward(x, axis, y, keepdims)
+        return y
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        x, axis, y, keepdims = ctx.saved_tensors
+
+        if axis is None:
+            mask = (x == y)
+            div = mask.sum(axis=axis, keepdims=keepdims)
+        else:
+            shape = restore_grad_shape(x.shape, x.ndim, axis)
+            grad = grad.reshape(shape)
+            y = y.reshape(shape)
+
+            mask = (x == y)
+            div = mask.sum(axis=axis, keepdims=True)
+
         return mask * grad / div
 
 
@@ -227,6 +292,47 @@ class Clip(Function):
         x, x_min, x_max = ctx.saved_tensors
         mask = (x >= x_min) * (x <= x_max)
         return grad * mask
+
+
+def dim_one(shape):
+    '''
+    找到之前维度大小为1的dim
+    '''
+    result = []
+    for i, s in enumerate(shape):
+        if s == 1:
+            result.append(i)
+    return result
+
+
+class Squeeze(Function):
+    def forward(ctx, x: NdArray, axis: Union[int, Tuple, None] = None) -> NdArray:
+        xp = get_array_module(x)
+        ctx.save_for_backward(x.shape, axis)
+
+        return xp.squeeze(x, axis)
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        x_shape, axis = ctx.saved_tensors
+
+        if axis is None:
+            axis = tuple(dim_one(x_shape))
+
+        shape = restore_grad_shape(x_shape, len(x_shape), axis)
+
+        return grad.reshape(shape)
+
+
+class UnSqueeze(Function):
+    def forward(ctx, x: NdArray, axis: int) -> NdArray:
+        xp = get_array_module(x)
+        ctx.save_for_backward(x.shape)
+
+        return xp.expand_dims(x, axis)
+
+    def backward(ctx, grad: NdArray) -> NdArray:
+        x_shape, = ctx.saved_tensors
+        return grad.reshape(x_shape)
 
 
 # ****矩阵运算****

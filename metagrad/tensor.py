@@ -15,7 +15,7 @@ from metagrad.cuda import (
     CpuDevice,
     GpuDevice,
     check_cuda_available,
-    get_gpu_device_or_current,
+    get_device,
     get_array_module
 )
 
@@ -100,10 +100,11 @@ class OpWrapper:
     支持反向传播的Debug
     '''
 
-    def __init__(self, name, xs, backward=False):
+    def __init__(self, name, xs, backward=False, threshold=0):
         self.name = f"back_{name}" if backward else name
         self.xs = xs
         self.output = None
+        self.threshold = threshold
 
     def __enter__(self):
         if Config.debug:
@@ -113,10 +114,11 @@ class OpWrapper:
     def __exit__(self, *junk):
         if Config.debug:
             end = (time.time() - self.start) * 1000
-            print(
-                f"{self.name:>20} : {end:>7.2f} ms {str([y.shape for y in self.xs]):>40} "
-                f"{'-> ' + str(self.output.shape) if self.output is not None else ''}"
-            )
+            if end > self.threshold:
+                print(
+                    f"{self.name:>20} : {end:>7.2f} ms {str([y.shape for y in self.xs]):>40} "
+                    f"{'-> ' + str(self.output.shape) if self.output is not None else ''}"
+                )
 
 
 class Tensor:
@@ -216,7 +218,7 @@ class Tensor:
     def to_gpu(self, device=None):
         '''拷贝数据和梯度到指定的GPU'''
         check_cuda_available()
-        return self.to(get_gpu_device_or_current(device))
+        return self.to(get_device(device))
 
     def zero_grad(self) -> None:
         '''
@@ -298,41 +300,55 @@ class Tensor:
     # ****创造帮助函数****
     @classmethod
     def empty(cls, *shape, dtype=_type, device=None, **kwargs):
-        return cls(np.empty(*shape, dtype=dtype), device=device, **kwargs)
+        device = get_device(device)
+        xp = device.xp
+        return cls(xp.empty(*shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
     def zeros(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
-        return cls(np.zeros(*shape, dtype=dtype), device=device, **kwargs)
+        device = get_device(device)
+        xp = device.xp
+        return cls(xp.zeros(*shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
     def zeros_like(cls, t: "Tensor", **kwargs) -> "Tensor":
-        return cls.zeros(t.shape, dtype=t.dtype, device=t.device, **kwargs)
+        return cls(t.xp.zeros(t.shape, dtype=t.dtype), device=t.device, **kwargs)
 
     @classmethod
     def ones(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
-        return cls(np.ones(shape, dtype=dtype), device=device, **kwargs)
+        device = get_device(device)
+        xp = device.xp
+        return cls(xp.ones(shape=shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
     def ones_like(cls, t: "Tensor", **kwargs) -> "Tensor":
-        return cls.ones(t.shape, t.dtype, t.device, **kwargs)
+        return cls(t.xp.ones(shape=t.shape, dtype=t.dtype), device=t.device, **kwargs)
 
     @classmethod
     def randn(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
-        return cls(np.random.randn(*shape).astype(dtype), device=device, **kwargs)
+        device = get_device(device)
+        xp = device.xp
+        return cls(xp.random.randn(*shape).astype(dtype), device=device, **kwargs)
 
     @classmethod
-    def arange(cls, stop, start=0, step=1, dtype=int, device=None, **kwargs) -> "Tensor":
+    def arange(cls, stop, start=0, step=1, dtype=None, device=None, **kwargs) -> "Tensor":
+        device = get_device(device)
+        xp = device.xp
         stop, start = start, stop
-        return cls(np.arange(start=start, stop=stop, step=step).astype(dtype), device=device, **kwargs)
+        return cls(xp.arange(start=start, stop=stop, step=step).astype(dtype), device=device, **kwargs)
 
     @classmethod
     def eye(cls, dim, dtype=_type, device=None, **kwargs) -> "Tensor":
-        return cls(np.eye(dim).astype(dtype), device=device, **kwargs)
+        device = get_device(device)
+        xp = device.xp
+        return cls(xp.eye(dim).astype(dtype), device=device, **kwargs)
 
     @classmethod
     def uniform(cls, *shape, low: float = -1.0, high: float = 1.0,
                 dtype=_type, device=None, **kwargs) -> "Tensor":
-        return cls((np.random.uniform(low, high, size=shape)).astype(dtype), device=device, **kwargs)
+        device = get_device(device)
+        xp = device.xp
+        return cls((xp.random.uniform(low, high, size=shape)).astype(dtype), device=device, **kwargs)
 
     @classmethod
     def multinomial(cls, input: "Tensor", num_samples: int, replace=False) -> "Tensor":
@@ -432,19 +448,22 @@ class Tensor:
         else:
             self._grad = ensure_tensor(grad, device=self.device)
 
-        for t in self._rev_topo_sort():
-            assert t.grad is not None
+        for t0 in self._rev_topo_sort():
+            if not any(x.requires_grad for x in t0._ctx.depends_on):
+                continue
 
-            with OpWrapper(t._ctx.__class__.__name__, [t.grad], backward=True):
+            assert t0.grad is not None
+
+            with OpWrapper(t0._ctx.__class__.__name__, [t0.grad], backward=True):
                 # 以逆序计算梯度，调用t相关运算操作的backward静态方法
                 # 计算流向其依赖节点上的梯度(流向其下游)
-                grads = t._ctx.backward(t._ctx, t.grad.data)
+                grads = t0._ctx.backward(t0._ctx, t0.grad.data)
 
             # 如果只依赖一个输入，我们也通过列表来封装，防止zip将其继续拆分
-            if len(t._ctx.depends_on) == 1:
+            if len(t0._ctx.depends_on) == 1 or not isinstance(grads, tuple):
                 grads = [grads]
 
-            for t, g in zip(t._ctx.depends_on, grads):
+            for t, g in zip(t0._ctx.depends_on, grads):
                 # 计算其下游节点上的累积梯度，因为可能有多条边
                 if t.requires_grad and g is not None:
                     # t.shape要和grad.shape保持一致
@@ -457,15 +476,10 @@ class Tensor:
 def register(name, fxn):
     def dispatch(*xs, **kwargs):
 
-        device = CpuDevice()
-        for x in xs:
-            gpu_device = GpuDevice.from_array(x.data if isinstance(x, Tensor) else x)
-            if gpu_device is not None:
-                device = gpu_device
-                break
-        # 把所有的输入都转换为Tensor
-        xs = [ensure_tensor(x, device) for x in xs]
-        
+        device = [x for x in xs if isinstance(x, Tensor)][0].device
+
+        xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
+
         return fxn.apply(fxn, *xs, **kwargs)
 
     if name in ["pow", "neg", "abs"]:

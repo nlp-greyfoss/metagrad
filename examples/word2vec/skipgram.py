@@ -6,7 +6,7 @@ from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
 from metagrad.loss import CrossEntropyLoss
-from metagrad.optim import Adam
+from metagrad.optim import SGD
 from utils import BOS_TOKEN, EOS_TOKEN, WEIGHT_INIT_RANGE, load_corpus
 
 
@@ -84,7 +84,7 @@ if __name__ == '__main__':
     device = cuda.get_device("cuda:1" if cuda.is_available() else "cpu")
     model = SkipGramModel(len(vocab), embedding_dim)
     model.to(device)
-    optimizer = Adam(model.parameters(), lr=1)
+    optimizer = SGD(model.parameters(), lr=1)
 
     for epoch in range(num_epoch):
         total_loss = 0

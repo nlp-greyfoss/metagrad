@@ -76,13 +76,13 @@ class SGNSModel(nn.Module):
         context_embeds = self.c_embeddings(pos_contexts)  # (batch_size, window_size * 2, embedding_dim)
         neg_context_embeds = self.c_embeddings(neg_contexts)  # (batch_size, window_size * n_negatives, embedding_dim)
 
-        word_embeds = F.unsqueeze(word_embeds, axis=2)
+        word_embeds = word_embeds.unsqueeze(2)
 
         # 正样本的对数似然
-        context_loss = F.logsigmoid(F.squeeze(context_embeds @ word_embeds, axis=2))
+        context_loss = F.logsigmoid((context_embeds @ word_embeds).squeeze(2))
         context_loss = context_loss.mean(axis=1)
         # 负样本的对数似然
-        neg_context_loss = F.logsigmoid(F.squeeze(neg_context_embeds @ word_embeds, axis=2).neg())
+        neg_context_loss = F.logsigmoid((neg_context_embeds @ word_embeds).squeeze(axis=2).neg())
         neg_context_loss = neg_context_loss.reshape((batch_size, -1, n_negatives)).sum(axis=2)
         neg_context_loss = neg_context_loss.mean(axis=1)
 
@@ -107,8 +107,8 @@ def get_unigram_distribution(corpus, vocab_size):
 if __name__ == '__main__':
     embedding_dim = 64
     window_size = 3
-    batch_size = 1024
-    num_epoch = 10
+    batch_size = 10240
+    num_epoch = 100
     min_freq = 3  # 保留单词最少出现的次数
     n_negatives = 10  # 负采样数
 
@@ -128,7 +128,7 @@ if __name__ == '__main__':
         shuffle=True
     )
 
-    device = cuda.get_device("cuda:1" if cuda.is_available() else "cpu")
+    device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
 
     print(f'current device:{device}')
 

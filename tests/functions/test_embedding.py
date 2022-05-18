@@ -12,7 +12,7 @@ def test_simple_embedding():
     x = 2
 
     m_weight = Tensor(weight, requires_grad=True)
-    mx = Tensor(x, dtype=np.int)
+    mx = Tensor(x, dtype=np.int32)
     my = F.embedding(m_weight, mx)
 
     t_weight = torch.tensor(weight, dtype=torch.float32, requires_grad=True)
@@ -34,7 +34,7 @@ def test_embedding():
     x = [[1, 2, 4, 5], [4, 3, 2, 9]]
 
     m_weight = Tensor(weight, requires_grad=True)
-    mx = Tensor(x, dtype=np.int)
+    mx = Tensor(x, dtype=np.int32)
     my = F.embedding(m_weight, mx)
 
     t_weight = torch.tensor(weight, dtype=torch.float32, requires_grad=True)

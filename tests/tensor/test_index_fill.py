@@ -4,11 +4,10 @@ from metagrad.tensor import Tensor
 
 
 def test_simple_index_fill():
-    x = Tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float)
+    x = Tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32)
     index = Tensor([0, 2])
     x.index_fill_(1, index, -1)
 
-    print(x)
     assert x.data.tolist() == [[-1., 2., - 1.],
                                [-1., 5., - 1.],
                                [-1., 8., - 1.]]
