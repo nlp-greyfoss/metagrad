@@ -15,7 +15,7 @@ from metagrad.cuda import (
     CpuDevice,
     GpuDevice,
     check_cuda_available,
-    get_gpu_device_or_current,
+    get_device,
     get_array_module
 )
 
@@ -218,7 +218,7 @@ class Tensor:
     def to_gpu(self, device=None):
         '''拷贝数据和梯度到指定的GPU'''
         check_cuda_available()
-        return self.to(get_gpu_device_or_current(device))
+        return self.to(get_device(device))
 
     def zero_grad(self) -> None:
         '''
@@ -300,13 +300,13 @@ class Tensor:
     # ****创造帮助函数****
     @classmethod
     def empty(cls, *shape, dtype=_type, device=None, **kwargs):
-        device = get_gpu_device_or_current(device)
+        device = get_device(device)
         xp = device.xp
         return cls(xp.empty(*shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
     def zeros(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
-        device = get_gpu_device_or_current(device)
+        device = get_device(device)
         xp = device.xp
         return cls(xp.zeros(*shape, dtype=dtype), device=device, **kwargs)
 
@@ -316,7 +316,7 @@ class Tensor:
 
     @classmethod
     def ones(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
-        device = get_gpu_device_or_current(device)
+        device = get_device(device)
         xp = device.xp
         return cls(xp.ones(shape=shape, dtype=dtype), device=device, **kwargs)
 
@@ -326,27 +326,27 @@ class Tensor:
 
     @classmethod
     def randn(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
-        device = get_gpu_device_or_current(device)
+        device = get_device(device)
         xp = device.xp
         return cls(xp.random.randn(*shape).astype(dtype), device=device, **kwargs)
 
     @classmethod
     def arange(cls, stop, start=0, step=1, dtype=None, device=None, **kwargs) -> "Tensor":
-        device = get_gpu_device_or_current(device)
+        device = get_device(device)
         xp = device.xp
         stop, start = start, stop
         return cls(xp.arange(start=start, stop=stop, step=step).astype(dtype), device=device, **kwargs)
 
     @classmethod
     def eye(cls, dim, dtype=_type, device=None, **kwargs) -> "Tensor":
-        device = get_gpu_device_or_current(device)
+        device = get_device(device)
         xp = device.xp
         return cls(xp.eye(dim).astype(dtype), device=device, **kwargs)
 
     @classmethod
     def uniform(cls, *shape, low: float = -1.0, high: float = 1.0,
                 dtype=_type, device=None, **kwargs) -> "Tensor":
-        device = get_gpu_device_or_current(device)
+        device = get_device(device)
         xp = device.xp
         return cls((xp.random.uniform(low, high, size=shape)).astype(dtype), device=device, **kwargs)
 
