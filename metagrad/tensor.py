@@ -465,7 +465,7 @@ class Tensor:
 
             for t, g in zip(t0._ctx.depends_on, grads):
                 # 计算其下游节点上的累积梯度，因为可能有多条边
-                if g is not None:
+                if t.requires_grad and g is not None:
                     # t.shape要和grad.shape保持一致
                     assert t.shape == g.shape, f"grad shape must match tensor shape in {self._ctx!r}, {g.shape!r} != {t.shape!r}"
                     # grad Tensor
