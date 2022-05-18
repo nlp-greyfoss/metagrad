@@ -3,62 +3,62 @@ import numpy as np
 import torch
 
 
-def test_simple_max():
+def test_simple_min():
     x = Tensor([1, 2, 3, 6, 7, 9, 2], requires_grad=True)
-    z = x.max()
+    z = x.min()
 
-    assert z.data == [9]
+    assert z.data == [1]
     z.backward()
 
-    assert x.grad.data.tolist() == [0, 0, 0, 0, 0, 1, 0]
+    assert x.grad.data.tolist() == [1, 0, 0, 0, 0, 0, 0]
 
 
-def test_simple_max2():
-    x = Tensor([1, 2, 3, 9, 7, 9, 2], requires_grad=True)
-    z = x.max()
+def test_simple_min2():
+    x = Tensor([1, 2, 3, 9, 7, 9, 1], requires_grad=True)
+    z = x.min()
 
-    assert z.data == [9]  # 最大值还是9
+    assert z.data == [1]  # 最小值还是1
     z.backward()
 
-    # 但是有两个最大值，所以梯度被均分了
-    assert x.grad.data.tolist() == [0, 0, 0, 0.5, 0, 0.5, 0]
+    # 但是有两个最小值，所以梯度被均分了
+    assert x.grad.data.tolist() == [0.5, 0, 0, 0, 0, 0, 0.5]
 
 
-def test_matrix_max():
+def test_matrix_min():
     a = np.array([[1., 1., 8., 9., 1.],
                   [4., 5., 9., 9., 8.],
                   [8., 6., 9., 7., 9.],
                   [8., 6., 1., 9., 8.]])
 
     x = Tensor(a, requires_grad=True)
-    z = x.max()
+    z = x.min()
 
-    assert z.data == [9]  # 最大值是9
+    assert z.data == [1]  # 最小值是1
     z.backward()
 
-    # 总共有6个9
-    np.testing.assert_array_almost_equal(x.grad.data, [[0, 0, 0, 1 / 6, 0],
-                                                       [0, 0, 1 / 6, 1 / 6, 0],
-                                                       [0, 0, 1 / 6, 0, 1 / 6],
-                                                       [0, 0, 0, 1 / 6, 0]])
+    # 总共有4个1
+    np.testing.assert_array_almost_equal(x.grad.data, [[1 / 4, 1 / 4, 0, 0, 1 / 4],
+                                                       [0, 0, 0, 0, 0],
+                                                       [0, 0, 0, 0, 0],
+                                                       [0, 0, 1 / 4, 0, 0]])
 
 
-def test_matrix_max2():
+def test_matrix_min2():
     a = np.array([[1., 1., 8., 9., 1.],
                   [4., 5., 9., 9., 8.],
                   [8., 6., 9., 7., 9.],
                   [8., 6., 1., 9., 8.]])
 
     x = Tensor(a, requires_grad=True)
-    z = x.max(0)  # [8, 6, 9, 9, 9]
+    z = x.min(0)  # [1, 1, 1, 7, 1]
 
-    assert z.data.tolist() == [8, 6, 9, 9, 9]
+    assert z.data.tolist() == [1, 1, 1, 7, 1]
     z.backward([1, 1, 1, 1, 1])
 
-    grad = [[0., 0., 0., 1 / 3, 0.],
-            [0., 0., 0.5, 1 / 3, 0.],
-            [0.5, 0.5, 0.5, 0, 1],
-            [0.5, 0.5, 0., 1 / 3, 0.]]
+    grad = [[1., 1., 0., 0., 1.],
+            [0., 0., 0., 0., 0.],
+            [0., 0., 0., 1., 0.],
+            [0., 0., 1., 0., 0.]]
 
     np.testing.assert_array_almost_equal(x.grad.data, np.array(grad))
 
@@ -75,10 +75,10 @@ def test_matrix_with_axis():
     #             [16 17 18 19]
     #             [20 21 22 23]]]
 
-    my = mx.max(1)  # [8, 6, 9, 9, 9]
+    my = mx.min(1)
 
     tx = torch.tensor(a, dtype=torch.float32, requires_grad=True)
-    ty = tx.max(1)
+    ty = tx.min(1)
 
     assert np.allclose(my.data, ty.values.data)
 
@@ -93,10 +93,10 @@ def test_matrix_with_negative_axis():
 
     mx = Tensor(a, requires_grad=True)
 
-    my = mx.max(-2)
+    my = mx.min(-2)
 
     tx = torch.tensor(a, dtype=torch.float32, requires_grad=True)
-    ty = tx.max(-2)
+    ty = tx.min(-2)
 
     assert np.allclose(my.data, ty.values.data)
 

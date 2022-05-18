@@ -33,7 +33,7 @@ def test_matrix_mean():
 
 def test_matrix_with_axis():
     x = Tensor([[1, 2, 3], [4, 5, 6]], requires_grad=True)  # (2,3)
-    y = x.mean(axis=0)  # keepdims = False
+    y = x.mean(0)  # keepdims = False
 
     assert y.shape == (3,)
     assert y.data.tolist() == [2.5, 3.5, 4.5]
