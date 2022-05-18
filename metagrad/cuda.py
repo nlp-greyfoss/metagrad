@@ -58,7 +58,8 @@ try:
     from cupy.cuda import Device as CudaDevice
 
 
-except ImportError:
+except ImportError as e:
+    print(e)
     # 当没有安装cupy时
     gpu_available = False
 
@@ -191,6 +192,7 @@ def is_available():
 def check_cuda_available():
     if not gpu_available:
         raise RuntimeError('Install cupy first.')
+
 
 def get_device(device_desc) -> Device:
     '''
