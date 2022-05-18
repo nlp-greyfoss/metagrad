@@ -100,10 +100,11 @@ class OpWrapper:
     支持反向传播的Debug
     '''
 
-    def __init__(self, name, xs, backward=False):
+    def __init__(self, name, xs, backward=False, threshold=0):
         self.name = f"back_{name}" if backward else name
         self.xs = xs
         self.output = None
+        self.threshold = threshold
 
     def __enter__(self):
         if Config.debug:
@@ -113,10 +114,11 @@ class OpWrapper:
     def __exit__(self, *junk):
         if Config.debug:
             end = (time.time() - self.start) * 1000
-            print(
-                f"{self.name:>20} : {end:>7.2f} ms {str([y.shape for y in self.xs]):>40} "
-                f"{'-> ' + str(self.output.shape) if self.output is not None else ''}"
-            )
+            if end > self.threshold:
+                print(
+                    f"{self.name:>20} : {end:>7.2f} ms {str([y.shape for y in self.xs]):>40} "
+                    f"{'-> ' + str(self.output.shape) if self.output is not None else ''}"
+                )
 
 
 class Tensor:
@@ -447,6 +449,9 @@ class Tensor:
             self._grad = ensure_tensor(grad, device=self.device)
 
         for t0 in self._rev_topo_sort():
+            if not any(x.requires_grad for x in t0._ctx.depends_on):
+                continue
+
             assert t0.grad is not None
 
             with OpWrapper(t0._ctx.__class__.__name__, [t0.grad], backward=True):
@@ -455,12 +460,12 @@ class Tensor:
                 grads = t0._ctx.backward(t0._ctx, t0.grad.data)
 
             # 如果只依赖一个输入，我们也通过列表来封装，防止zip将其继续拆分
-            if len(t0._ctx.depends_on) == 1:
+            if len(t0._ctx.depends_on) == 1 or not isinstance(grads, tuple):
                 grads = [grads]
 
             for t, g in zip(t0._ctx.depends_on, grads):
                 # 计算其下游节点上的累积梯度，因为可能有多条边
-                if t.requires_grad and g is not None:
+                if g is not None:
                     # t.shape要和grad.shape保持一致
                     assert t.shape == g.shape, f"grad shape must match tensor shape in {self._ctx!r}, {g.shape!r} != {t.shape!r}"
                     # grad Tensor

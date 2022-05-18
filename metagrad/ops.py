@@ -13,7 +13,7 @@ ops.py保存所有运算操作相关的类
 class Function:
     def __init__(self, *tensors: "Tensor") -> None:
         # 该操作所依赖的所有输入
-        self.depends_on = [t for t in tensors if t.requires_grad]
+        self.depends_on = [t for t in tensors]
         # 保存需要在backward()中使用的Tensor或其他对象(如Shape)
         self.saved_tensors = []
 
