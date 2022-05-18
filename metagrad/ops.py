@@ -308,6 +308,10 @@ def dim_one(shape):
 class Squeeze(Function):
     def forward(ctx, x: NdArray, axis: Union[int, Tuple, None] = None) -> NdArray:
         xp = get_array_module(x)
+
+        if isinstance(axis, (np.ndarray, ndarray)):
+            axis = axis.item()
+
         ctx.save_for_backward(x.shape, axis)
 
         return xp.squeeze(x, axis)
@@ -327,6 +331,9 @@ class UnSqueeze(Function):
     def forward(ctx, x: NdArray, axis: int) -> NdArray:
         xp = get_array_module(x)
         ctx.save_for_backward(x.shape)
+
+        if isinstance(axis, (np.ndarray, ndarray)):
+            axis = axis.item()
 
         return xp.expand_dims(x, axis)
 
