@@ -1,6 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 
+from examples.embeddings.utils import save_pretrained
 from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.optim import SGD
@@ -151,4 +152,4 @@ if __name__ == '__main__':
 
             print(f'Loss: {total_loss:.2f}')
 
-    model.save()
+    save_pretrained(vocab, model.embeddings.weight, 'sgns.vec')

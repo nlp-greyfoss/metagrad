@@ -2,6 +2,7 @@ import numpy as np
 from tqdm import tqdm
 
 import metagrad.module as nn
+from examples.embeddings.utils import save_pretrained
 from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
@@ -98,4 +99,4 @@ if __name__ == '__main__':
             total_loss += loss
         print(f"Loss: {total_loss.item():.2f}")
 
-    model.save()
+    save_pretrained(vocab, model.embeddings.weight, 'sg.vec')
