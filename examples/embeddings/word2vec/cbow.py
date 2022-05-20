@@ -9,7 +9,7 @@ from metagrad.init import uniform_
 from metagrad.loss import CrossEntropyLoss
 from metagrad.optim import SGD
 from metagrad.tensor import debug_mode
-from utils import BOS_TOKEN, EOS_TOKEN, WEIGHT_INIT_RANGE, load_corpus
+from examples.embeddings.utils import BOS_TOKEN, EOS_TOKEN, WEIGHT_INIT_RANGE, load_corpus, save_pretrained
 
 
 class CBOWDataset(Dataset):
@@ -74,7 +74,7 @@ if __name__ == '__main__':
     num_epoch = 100
     min_freq = 3  # 保留单词最少出现的次数
 
-    corpus, vocab = load_corpus('../data/xiyouji.txt', min_freq)
+    corpus, vocab = load_corpus('../../data/xiyouji.txt', min_freq)
     # 构建数据集
     dataset = CBOWDataset(corpus, vocab, window_size=window_size)
     data_loader = DataLoader(
@@ -94,18 +94,17 @@ if __name__ == '__main__':
     model.to(device)
 
     optimizer = SGD(model.parameters())
-    with debug_mode():
-        for epoch in range(num_epoch):
-            total_loss = 0
-            for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
-                inputs, targets = [x.to(device) for x in batch]
-                optimizer.zero_grad()
-                output = model(inputs)
-                loss = loss_func(output, targets)
-                loss.backward()
-                optimizer.step()
-                total_loss += loss
+    for epoch in range(num_epoch):
+        total_loss = 0
+        for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
+            inputs, targets = [x.to(device) for x in batch]
+            optimizer.zero_grad()
+            output = model(inputs)
+            loss = loss_func(output, targets)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss
 
-            print(f'Loss: {total_loss.item():.2f}')
+    print(f'Loss: {total_loss.item():.2f}')
 
-    model.save()
+    save_pretrained(vocab, model.embeddings.weight, 'cbow.vec')

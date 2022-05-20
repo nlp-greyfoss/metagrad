@@ -2,6 +2,7 @@ from typing import Any, Tuple, Union
 
 import numpy as np
 
+from metagrad import cuda
 from metagrad.cuda import get_array_module, ndarray
 from metagrad.tensor import Tensor, NdArray
 
@@ -194,8 +195,25 @@ class TrueDiv(Function):
         return x / y
 
     def backward(ctx, grad: NdArray) -> Tuple[NdArray, NdArray]:
+        xp = get_array_module(grad)
         x, y = ctx.saved_tensors
-        return unbroadcast(grad / y, x.shape), unbroadcast(grad * (-x / y ** 2), y.shape)
+
+        if xp is np:
+            gx = grad / y
+            gy = -gx * x / y
+        else:
+            # 使用自定义内核代码加速
+            gx, gy = cuda.elementwise(
+                'T x, T y, T grad',
+                'T gx, T gy',
+                '''
+                gx = grad / y;
+                gy = -gx * x / y;
+                ''',
+                'div_bw'
+            )(x, y, grad)
+
+        return unbroadcast(gx, x.shape), unbroadcast(gy, y.shape)
 
 
 # ****聚合运算****

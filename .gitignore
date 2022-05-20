@@ -52,6 +52,7 @@ coverage.xml
 .pytest_cache/
 
 *.pt
+*.vec
 
 # image in examples
 examples/*.png

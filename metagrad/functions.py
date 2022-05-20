@@ -110,7 +110,7 @@ def log_softmax(x: Tensor, axis=-1):
 
 def _reduction(errors: Tensor, method: str) -> Tensor:
     if method == "mean":
-        loss = errors.sum() / errors.shape[0]
+        loss = errors.sum() / float(errors.shape[0])
     elif method == "sum":
         loss = errors.sum()
     else:
