@@ -93,7 +93,7 @@ if __name__ == '__main__':
     model = CBOWModel(len(vocab), embedding_dim)
     model.to(device)
 
-    optimizer = SGD(model.parameters())
+    optimizer = SGD(model.parameters(), 1)
     for epoch in range(num_epoch):
         total_loss = 0
         for batch in tqdm(data_loader, desc=f'Training Epoch {epoch}'):
@@ -105,6 +105,6 @@ if __name__ == '__main__':
             optimizer.step()
             total_loss += loss
 
-    print(f'Loss: {total_loss.item():.2f}')
+        print(f'Loss: {total_loss.item():.2f}')
 
     save_pretrained(vocab, model.embeddings.weight, 'cbow.vec')
