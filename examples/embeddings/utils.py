@@ -75,7 +75,7 @@ def load_corpus(corpus_path, min_freq=2):
     :param corpus_path: 处理好的文本路径
     :return:
     '''
-    with open(corpus_path, 'r', encoding='utf8') as f:
+    with open(corpus_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     # 去掉空行，将文本转换为单词列表
     # 去掉换行符
@@ -152,4 +152,4 @@ def search(search_key, embeddings, vocab):
     embeddings = embeddings.data
     s = np.sqrt((embeddings * embeddings).sum(1))
     embeddings /= s.reshape((s.shape[0], 1))  # normalize
-    find_nearest(search_key, vocab, embeddings, top_k=5)
+    find_nearest(search_key, vocab, embeddings, top_k=3)

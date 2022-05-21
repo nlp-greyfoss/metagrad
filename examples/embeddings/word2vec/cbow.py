@@ -70,8 +70,8 @@ class CBOWModel(nn.Module):
 if __name__ == '__main__':
     embedding_dim = 64
     window_size = 3
-    batch_size = 1024
-    num_epoch = 100
+    batch_size = 2048
+    num_epoch = 2000
     min_freq = 3  # 保留单词最少出现的次数
 
     corpus, vocab = load_corpus('../../data/xiyouji.txt', min_freq)
