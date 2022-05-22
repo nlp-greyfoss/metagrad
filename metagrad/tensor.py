@@ -444,7 +444,7 @@ class Tensor:
         if grad is None:
             if self.shape == ():
                 # 设置梯度值为1，grad本身不需要计算梯度
-                self._grad = Tensor(1, device=self.device)
+                self._grad = Tensor(1., device=self.device)
             else:
                 # 如果当前Tensor得到不是标量，那么grad必须制定
                 raise RuntimeError("grad must be specified for non scalar")
@@ -472,7 +472,7 @@ class Tensor:
                     # t.shape要和grad.shape保持一致
                     assert t.shape == g.shape, f"grad shape must match tensor shape in {self._ctx!r}, {g.shape!r} != {t.shape!r}"
                     # grad Tensor
-                    gt = Tensor(g, device=self.device)
+                    gt = Tensor(g, device=self.device, dtype=self.dtype)
                     t._grad = gt if t.grad is None else t.grad + gt
 
 

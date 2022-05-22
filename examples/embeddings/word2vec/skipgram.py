@@ -2,6 +2,7 @@ import numpy as np
 from tqdm import tqdm
 
 import metagrad.module as nn
+from examples.embeddings.utils import save_pretrained
 from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
@@ -64,9 +65,9 @@ class SkipGramModel(nn.Module):
 
 if __name__ == '__main__':
     embedding_dim = 64
-    window_size = 3
+    window_size = 2
     batch_size = 1024
-    num_epoch = 10
+    num_epoch = 1000
     min_freq = 3  # 保留单词最少出现的次数
 
     # 读取文本数据，构建Skip-gram模型训练数据集
@@ -81,7 +82,7 @@ if __name__ == '__main__':
 
     loss_func = CrossEntropyLoss()
     # 构建Skip-gram模型，并加载至device
-    device = cuda.get_device("cuda:1" if cuda.is_available() else "cpu")
+    device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
     model = SkipGramModel(len(vocab), embedding_dim)
     model.to(device)
     optimizer = SGD(model.parameters(), lr=1)
@@ -97,3 +98,5 @@ if __name__ == '__main__':
             optimizer.step()
             total_loss += loss
         print(f"Loss: {total_loss.item():.2f}")
+
+    save_pretrained(vocab, model.embeddings.weight, 'sg.vec')

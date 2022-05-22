@@ -1,3 +1,4 @@
+import functools
 from numbers import Number
 
 import numpy
@@ -264,3 +265,33 @@ def get_array_module(array):
         return cupy.get_array_module(array)
 
     return numpy
+
+
+def memoize(bool_for_each_device=False):
+    if gpu_available:
+        return cupy.memoize(bool_for_each_device)
+
+    # 否则返回假的装饰器
+    def dummy_decorator(f):
+        @functools.wraps(f)
+        def ret(*args, **kwargs):
+            return f(*args, **kwargs)
+
+        return ret
+
+    return dummy_decorator
+
+
+def clear_memo():
+    if gpu_available:
+        cupy.clear_memo()
+
+
+@memoize()
+def elementwise(in_params, out_params, operation, name, **kwargs):
+    '''
+    调用cupy的ElementwiseKernel去加速GPU运行，注意需要编写C++代码，见 https://docs.cupy.dev/en/stable/user_guide/kernel.html
+    '''
+    check_cuda_available()
+    return cupy.ElementwiseKernel(
+        in_params, out_params, operation, name, **kwargs)

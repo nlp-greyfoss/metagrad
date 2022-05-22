@@ -1,6 +1,8 @@
 from collections import defaultdict
 import numpy as np
 
+from metagrad import Tensor
+
 BOS_TOKEN = "<bos>"  # 句子开始标记
 EOS_TOKEN = "<eos>"  # 句子结束标记
 PAD_TOKEN = "<pad>"  # 填充标记
@@ -50,6 +52,11 @@ class Vocabulary:
         '''得到token对应的id'''
         return self._token_to_idx.get(token, self.unk)
 
+    @property
+    def id2token(self):
+        '''返回idx_to_token列表'''
+        return self._idx_to_token
+
     def token(self, idx):
         assert 0 <= idx < len(self._idx_to_token), f"actual index : {idx} not between 0 and {len(self._idx_to_token)}"
         '''根据索引获取token'''
@@ -68,10 +75,11 @@ def load_corpus(corpus_path, min_freq=2):
     :param corpus_path: 处理好的文本路径
     :return:
     '''
-    with open(corpus_path, 'r', encoding='utf8') as f:
+    with open(corpus_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
     # 去掉空行，将文本转换为单词列表
-    text = [[word for word in sentence.split(' ')] for sentence in lines if len(sentence) != 0]
+    # 去掉换行符
+    text = [[word.strip() for word in sentence.split(' ')] for sentence in lines if len(sentence) != 0]
     # 构建词典
     vocab = Vocabulary.build(text, min_freq=min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
     print(f'vocab size:{len(vocab)}')
@@ -79,6 +87,45 @@ def load_corpus(corpus_path, min_freq=2):
     corpus = [vocab.to_ids(sentence) for sentence in text]
 
     return corpus, vocab
+
+
+def save_pretrained(vocab, embeddings, save_path):
+    '''
+    保存预训练的模型(Word2vec或GloVe)的权重
+    第一行指定了标记数和嵌入维度
+    然后每一行代表一个标记的向量
+    '''
+    embeddings = embeddings.to_cpu().data
+    with open(save_path, 'w', encoding='utf-8') as f:
+        f.write(f'{embeddings.shape[0]} {embeddings.shape[1]}\n')
+        for idx, token in enumerate(vocab.id2token):
+            vec = " ".join([f"{x:.4f}" for x in embeddings[idx]])
+            f.write(f'{token} {vec}\n')
+    print(f'Pretrained embeddings saved to: {save_path}')
+
+
+def load_pretrained(load_path):
+    '''
+    加载保存的权重
+    '''
+    with open(load_path, 'r', encoding='utf-8') as f:
+        # 读取首行->拆分->转换为int
+        n, d = [int(x) for x in f.readline().split()]
+        print(f'tokens number:{n}, embedding_dim:{d}')
+        tokens = []
+        embeds = []
+        for line in f:
+            line = line.rstrip().split(" ")
+            # 单词 嵌入向量
+            token, embed = line[0], [float(x) for x in line[1:]]
+            tokens.append(token)
+            embeds.append(embed)
+
+        # 构建词表
+        vocab = Vocabulary(tokens)
+        embeds = Tensor(embeds)
+
+    return vocab, embeds
 
 
 def find_nearest(key, vocab, embedding_weights, top_k=3):
@@ -102,6 +149,7 @@ def find_nearest(key, vocab, embedding_weights, top_k=3):
 
 
 def search(search_key, embeddings, vocab):
+    embeddings = embeddings.data
     s = np.sqrt((embeddings * embeddings).sum(1))
     embeddings /= s.reshape((s.shape[0], 1))  # normalize
-    find_nearest(search_key, vocab, embeddings, top_k=5)
+    find_nearest(search_key, vocab, embeddings, top_k=3)
