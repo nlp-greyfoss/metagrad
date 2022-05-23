@@ -219,3 +219,46 @@ class Dropout(Module):
 
     def forward(self, input: Tensor) -> Tensor:
         return F.dropout(input, self.p, self.training)
+
+
+# RNN
+class RNNBase(Module):
+    def __init__(self, mode: str, input_size: int, hidden_size: int, bias: bool = True,
+                 device=None, dtype=None
+                 ) -> None:
+        factory_kwards = {'device': device, 'dtype': dtype}
+        self.mode = mode
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.bias = bias
+
+        # 支持LSTM、GRU和简单RNN
+        if mode == 'LSTM':
+            gate_size = 4 * hidden_size
+        elif mode == 'GRU':
+            gate_size = 3 * hidden_size
+        elif mode == 'RNN_TANH':
+            gate_size = hidden_size
+        elif mode == 'RNN_RELU':
+            gate_size = hidden_size
+        else:
+            raise ValueError("Unrecognized RNN mode: " + mode)
+
+
+class RNN(RNNBase):
+    '''
+    Elman RNN
+    '''
+
+    def __init__(self, *args, **kwargs):
+        self.nonlinearity = kwargs.pop('nonlinearity', 'tanh')
+        # 激活函数支持 tanh 和 relu
+        if self.nonlinearity == 'tanh':
+            mode = 'RNN_TANH'
+        else:
+            mode = 'RNN_RELU'
+
+        super(RNN, self).__init__(mode, *args, **kwargs)
+
+    def forward(self, input, hx=None):
+        pass
