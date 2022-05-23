@@ -1,6 +1,7 @@
 import inspect
+import math
 import pickle
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import metagrad.functions as F
 from metagrad import init
@@ -221,16 +222,46 @@ class Dropout(Module):
         return F.dropout(input, self.p, self.training)
 
 
+def apply_permutation(tensor: Tensor, permutation: Tensor, dim: int = 1) -> Tensor:
+    return tensor.index_select(dim, permutation)
+
+
 # RNN
 class RNNBase(Module):
-    def __init__(self, mode: str, input_size: int, hidden_size: int, bias: bool = True,
+    def __init__(self, mode: str, input_size: int, hidden_size: int,
+                 num_layers: int = 1, bias: bool = 1, batch_first: bool = False,
+                 dropout: float = 0., bidirectional: bool = False, proj_size: int = 0,
                  device=None, dtype=None
                  ) -> None:
+        '''
+        RNN基类参数
+
+        Args:
+            mode: LSTM|GRU|RNN_TANH|RNN_RELU
+            input_size: 输入x的特征数
+            hidden_size: 隐藏状态h的特征数
+            num_layers: 层数，默认为1。若大于1，表示堆叠多个RNN
+            bias: 是否需要偏置项，如果为False，那么不使用b_ih和b_hh
+            batch_first: 如果为True，那么输入和输出通过(batch,seq,feature)的形式，而不是(seq,batch,feature)
+            dropout: 多层RNN间使用dropout的比率，默认为0，代表不使用dropout
+            bidirectional: 如果为True，代表双向RNN
+            proj_size: LSTM会投影到相应的大小，默认为0
+            device: 设备GpuDevice或CpuDevice
+            dtype: 数据类型
+        '''
         factory_kwards = {'device': device, 'dtype': dtype}
+
         self.mode = mode
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.num_layers = num_layers
         self.bias = bias
+        self.batch_first = batch_first
+        self.dropout = float(dropout)
+        self.bidirectional = bidirectional
+        self.proj_size = proj_size
+
+        num_directions = 2 if bidirectional else 1
 
         # 支持LSTM、GRU和简单RNN
         if mode == 'LSTM':
@@ -243,6 +274,49 @@ class RNNBase(Module):
             gate_size = hidden_size
         else:
             raise ValueError("Unrecognized RNN mode: " + mode)
+
+        for layer in range(num_layers):
+            for direction in range(num_directions):
+                # 真正的隐藏大小
+                real_hidden_size = proj_size if proj_size > 0 else hidden_size
+                # 输入大小
+                layer_input_size = input_size if layer == 0 else real_hidden_size * num_directions
+
+                w_ih = Parameter(Tensor.empty((gate_size, layer_input_size), **factory_kwards))
+                w_hh = Parameter(Tensor.empty((gate_size, real_hidden_size), **factory_kwards))
+                b_ih = Parameter(Tensor.empty(gate_size, **factory_kwards))
+                b_hh = Parameter(Tensor.empty(gate_size, **factory_kwards))
+
+                layer_params: Tuple[Tensor, ...] = ()
+                if self.proj_size == 0:
+                    if bias:
+                        layer_params = (w_ih, w_hh, b_ih, b_hh)
+                    else:
+                        layer_params = (w_ih, w_hh)
+                else:
+                    w_hr = Parameter(Tensor.empty((proj_size, hidden_size), **factory_kwards))
+                    if bias:
+                        layer_params = (w_ih, w_hh, b_ih, b_hh, w_hr)
+                    else:
+                        layer_params = (w_ih, w_hh, w_hr)
+
+                suffix = '_reverse' if direction == 1 else ''
+                param_names = ['weight_ih_l{}{}', 'weight_hh_l{}{}']
+                if bias:
+                    param_names += ['bias_ih_l{}{}', 'bias_hh_l{}{}']
+                if self.proj_size > 0:
+                    param_names += ['weight_hr_l{}{}']
+                param_names = [x.format(layer, suffix) for x in param_names]
+                # 动态设值
+                for name, param in zip(param_names, layer_params):
+                    setattr(self, name, param)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        stdv = 1.0 / math.sqrt(self.hidden_size) if self.hidden_size > 0 else 0
+        for weight in self.parameters():
+            init.uniform_(weight, -stdv, stdv)
 
 
 class RNN(RNNBase):
@@ -261,4 +335,61 @@ class RNN(RNNBase):
         super(RNN, self).__init__(mode, *args, **kwargs)
 
     def forward(self, input, hx=None):
-        pass
+        batch_sizes = None
+        is_batched = input.dim() == 3
+        batch_dim = 0 if self.batch_first else 1
+        if not is_batched:
+            input = input.unsqueeze(batch_dim)
+            if hx is not None:
+                if hx.dim() != 2:
+                    raise RuntimeError(
+                        f"For unbatched 2-D input, hx should also be 2-D but got {hx.dim()}-D tensor")
+                hx = hx.unsqueeze(1)
+            else:
+                if hx is not None and hx.dim() != 3:
+                    raise RuntimeError(
+                        f"For batched 3-D input, hx should also be 3-D but got {hx.dim()}-D tensor")
+
+            max_batch_size = input.size(0) if self.batch_first else input.size(1)
+            sorted_indices = None
+
+        if hx is None:
+            # 初始时hx为None
+            num_directions = 2 if self.bidirectional else 1
+            hx = Tensor.zeros(self.num_layers * num_directions,
+                              max_batch_size, self.hidden_size,
+                              dtype=input.dtype, device=input.device)
+        else:
+            hx = self.permute_hidden(hx, sorted_indices)
+
+        assert hx is not None
+
+        assert self.mode == 'RNN_TANH' or self.mode == 'RNN_RELU'
+
+        if batch_sizes is None:
+            if self.mode == 'RNN_TANH':
+                result = F.rnn_tanh(input, hx, self._flat_weights, self.bias, self.num_layers,
+                                    self.dropout, self.training, self.bidirectional,
+                                    self.batch_first)
+            else:
+                result = F.rnn_relu(input, hx, self._flat_weights, self.bias, self.num_layers,
+                                    self.dropout, self.training, self.bidirectional,
+                                    self.batch_first)
+        else:
+            if self.mode == 'RNN_TANH':
+                result = F.rnn_tanh(input, batch_sizes, hx, self._flat_weights, self.bias,
+                                    self.num_layers, self.dropout, self.training,
+                                    self.bidirectional)
+            else:
+                result = F.rnn_relu(input, batch_sizes, hx, self._flat_weights, self.bias,
+                                    self.num_layers, self.dropout, self.training,
+                                    self.bidirectional)
+
+        output = result[0]
+        hidden = result[1]
+
+        if not is_batched:
+            output = output.squeeze(batch_dim)
+            hidden = hidden.squeeze(1)
+
+        return output, hidden
