@@ -1,12 +1,11 @@
 import numpy as np
 from tqdm import tqdm
 
-from examples.embeddings.utils import save_pretrained
+from examples.embeddings.utils import save_pretrained, BOS_TOKEN, EOS_TOKEN, PAD_TOKEN, load_corpus
 from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.optim import SGD
 from metagrad.tensor import debug_mode
-from utils import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN, load_corpus
 from metagrad.dataset import Dataset
 import metagrad.functions as F
 import metagrad.module as nn
@@ -115,7 +114,7 @@ if __name__ == '__main__':
     n_negatives = 10  # 负采样数
 
     # 读取数据
-    corpus, vocab = load_corpus('../data/xiyouji.txt', min_freq)
+    corpus, vocab = load_corpus('../../data/xiyouji.txt', min_freq)
     # 计算unigram概率分布
     unigram_dist = get_unigram_distribution(corpus, len(vocab))
     # 根据unigram分布计算负采样分数： p(w)**0.75

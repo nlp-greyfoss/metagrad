@@ -272,6 +272,14 @@ class Tensor:
         '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
 
+    def int_(self) -> "Tensor":
+        self.data = self.data.astype(np.int16)
+        return self
+
+    def float_(self) -> "Tensor":
+        self.data = self.data.astype(np.float32)
+        return self
+
     #
     # def squeeze(self, axis=None) -> "Tensor":
     #     return Tensor(self.array().squeeze(axis=axis), device=self.device, requires_grad=self.requires_grad)

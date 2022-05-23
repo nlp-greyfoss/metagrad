@@ -4,15 +4,11 @@ import numpy as np
 from tqdm.auto import tqdm
 
 import metagrad.module as nn
-import metagrad.functions as F
-
+from examples.embeddings.utils import BOS_TOKEN, EOS_TOKEN, load_corpus, save_pretrained
 from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
-from metagrad.loss import CrossEntropyLoss
 from metagrad.optim import SGD
-from metagrad.tensor import debug_mode
-from examples.embeddings.utils import BOS_TOKEN, EOS_TOKEN, WEIGHT_INIT_RANGE, load_corpus, save_pretrained
 
 
 class GloveDataset(Dataset):
@@ -23,11 +19,11 @@ class GloveDataset(Dataset):
         self.eos = vocab[EOS_TOKEN]
 
         for sentence in tqdm(corpus, desc='Dataset Construction'):
-            sentent = [self.bos] + sentence + [self.eos]
-            for i in range(1, len(sentent) - 1):
-                w = sentent[i]
-                left_contexts = sentent[max(0, i - window_size):i]
-                right_contexts = sentent[i + 1: min(len(sentent), i + window_size)]
+            sentence = [self.bos] + sentence + [self.eos]
+            for i in range(1, len(sentence) - 1):
+                w = sentence[i]
+                left_contexts = sentence[max(0, i - window_size):i]
+                right_contexts = sentence[i + 1: min(len(sentence), i + window_size)]
                 # 共现次数随距离衰减
                 for k, c in enumerate(left_contexts[::-1]):
                     self.cooccur_counts[(w, c)] += 1 / (k + 1)
@@ -48,7 +44,7 @@ class GloveDataset(Dataset):
         words = Tensor([ex[0] for ex in examples])
         contexts = Tensor([ex[1] for ex in examples])
         counts = Tensor([ex[2] for ex in examples])
-        return words, contexts, counts
+        return words.int_(), contexts.int_(), counts
 
 
 class GloveModel(nn.Module):
@@ -93,7 +89,7 @@ if __name__ == '__main__':
     min_freq = 3
 
     # 读取数据
-    corpus, vocab = load_corpus('../data/xiyouji.txt', min_freq)
+    corpus, vocab = load_corpus('../../data/xiyouji.txt', min_freq)
     # 构建数据集
     dataset = GloveDataset(corpus, vocab, window_size=window_size)
     # 构建数据加载器
@@ -109,7 +105,7 @@ if __name__ == '__main__':
     print(f'current device:{device}')
 
     # 构建模型
-    model = GloveModel(len(vocab), embedding_dim)
+    model = GloveModel(len(vocab), embedding_dim, m_max, alpha)
     model.to(device)
 
     optimizer = SGD(model.parameters())
