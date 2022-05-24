@@ -229,7 +229,7 @@ def apply_permutation(tensor: Tensor, permutation: Tensor, dim: int = 1) -> Tens
 # RNN
 class RNNBase(Module):
     def __init__(self, mode: str, input_size: int, hidden_size: int,
-                 num_layers: int = 1, bias: bool = 1, batch_first: bool = False,
+                 num_layers: int = 1, bias: bool = True, batch_first: bool = False,
                  dropout: float = 0., bidirectional: bool = False, proj_size: int = 0,
                  device=None, dtype=None
                  ) -> None:
@@ -264,6 +264,7 @@ class RNNBase(Module):
         num_directions = 2 if bidirectional else 1
 
         # 支持LSTM、GRU和简单RNN
+        # gate_size为所有门控中权重的维度
         if mode == 'LSTM':
             gate_size = 4 * hidden_size
         elif mode == 'GRU':
@@ -275,16 +276,22 @@ class RNNBase(Module):
         else:
             raise ValueError("Unrecognized RNN mode: " + mode)
 
+        self._flat_weights_names = []
+        self._all_weights = []
+
         for layer in range(num_layers):
             for direction in range(num_directions):
-                # 真正的隐藏大小
+                # 真正的隐藏层大小
                 real_hidden_size = proj_size if proj_size > 0 else hidden_size
                 # 输入大小
                 layer_input_size = input_size if layer == 0 else real_hidden_size * num_directions
-
+                # 输入(input)到隐藏层(hidden)的权重
                 w_ih = Parameter(Tensor.empty((gate_size, layer_input_size), **factory_kwards))
-                w_hh = Parameter(Tensor.empty((gate_size, real_hidden_size), **factory_kwards))
+                # 输入到隐藏层的偏置
                 b_ih = Parameter(Tensor.empty(gate_size, **factory_kwards))
+                # 隐藏层到隐藏层的权重
+                w_hh = Parameter(Tensor.empty((gate_size, real_hidden_size), **factory_kwards))
+                # 隐藏层到隐藏层的偏置
                 b_hh = Parameter(Tensor.empty(gate_size, **factory_kwards))
 
                 layer_params: Tuple[Tensor, ...] = ()
@@ -311,9 +318,19 @@ class RNNBase(Module):
                 for name, param in zip(param_names, layer_params):
                     setattr(self, name, param)
 
+                self._flat_weights_names.extend(param_names)
+                self._all_weights.append(param_names)
+
+        self._flat_weights = [(lambda wn: getattr(self, wn) if hasattr(self, wn) else None)(wn) for wn in
+                                  self._flat_weights_names]
+
         self.reset_parameters()
 
     def reset_parameters(self):
+        '''
+        通过 U(-sqrt(hidden_size), sqrt(hidden_size)来初始化所有的权重和偏置
+        '''
+
         stdv = 1.0 / math.sqrt(self.hidden_size) if self.hidden_size > 0 else 0
         for weight in self.parameters():
             init.uniform_(weight, -stdv, stdv)
@@ -325,6 +342,7 @@ class RNN(RNNBase):
     '''
 
     def __init__(self, *args, **kwargs):
+        # 得到并删除nonlinearity对应的值，默认为tanh
         self.nonlinearity = kwargs.pop('nonlinearity', 'tanh')
         # 激活函数支持 tanh 和 relu
         if self.nonlinearity == 'tanh':
@@ -335,23 +353,37 @@ class RNN(RNNBase):
         super(RNN, self).__init__(mode, *args, **kwargs)
 
     def forward(self, input, hx=None):
-        batch_sizes = None
+        '''
+        RNN中的前向传播
+        Args:
+            input: 输入，形状为(batch,seq,feature)或(seq,batch,feature)或(seq, feature)
+            hx: 相应的隐藏状态
+
+        Returns:
+
+        '''
+        # 如果输入维度数为3，说明是(batch,seq,feature)或(seq,batch,feature)这种批输入
         is_batched = input.dim() == 3
-        batch_dim = 0 if self.batch_first else 1
+        batch_dim = 0 if self.batch_first else 1 # 获取batch大小所在的维度
+        # 如果不是批输入
         if not is_batched:
+            # 在batch_dim处增加维数1，变成大小为1的批输入
             input = input.unsqueeze(batch_dim)
+            # 如果hx不为空，我们还需要增加hx的批次维度
             if hx is not None:
                 if hx.dim() != 2:
                     raise RuntimeError(
                         f"For unbatched 2-D input, hx should also be 2-D but got {hx.dim()}-D tensor")
+                # 隐藏状态的批次维度在1处
                 hx = hx.unsqueeze(1)
-            else:
-                if hx is not None and hx.dim() != 3:
-                    raise RuntimeError(
-                        f"For batched 3-D input, hx should also be 3-D but got {hx.dim()}-D tensor")
+        else:
+            # 验证hx的维度
+            if hx is not None and hx.dim() != 3:
+                raise RuntimeError(
+                    f"For batched 3-D input, hx should also be 3-D but got {hx.dim()}-D tensor")
 
-            max_batch_size = input.size(0) if self.batch_first else input.size(1)
-            sorted_indices = None
+        # 批次大小
+        max_batch_size = input.size(0) if self.batch_first else input.size(1)
 
         if hx is None:
             # 初始时hx为None
@@ -359,31 +391,19 @@ class RNN(RNNBase):
             hx = Tensor.zeros(self.num_layers * num_directions,
                               max_batch_size, self.hidden_size,
                               dtype=input.dtype, device=input.device)
-        else:
-            hx = self.permute_hidden(hx, sorted_indices)
 
         assert hx is not None
 
         assert self.mode == 'RNN_TANH' or self.mode == 'RNN_RELU'
 
-        if batch_sizes is None:
-            if self.mode == 'RNN_TANH':
-                result = F.rnn_tanh(input, hx, self._flat_weights, self.bias, self.num_layers,
-                                    self.dropout, self.training, self.bidirectional,
-                                    self.batch_first)
-            else:
-                result = F.rnn_relu(input, hx, self._flat_weights, self.bias, self.num_layers,
-                                    self.dropout, self.training, self.bidirectional,
-                                    self.batch_first)
+        if self.mode == 'RNN_TANH':
+            result = F.rnn_tanh(input, hx, self._flat_weights, self.bias, self.num_layers,
+                                self.dropout, self.training, self.bidirectional,
+                                self.batch_first)
         else:
-            if self.mode == 'RNN_TANH':
-                result = F.rnn_tanh(input, batch_sizes, hx, self._flat_weights, self.bias,
-                                    self.num_layers, self.dropout, self.training,
-                                    self.bidirectional)
-            else:
-                result = F.rnn_relu(input, batch_sizes, hx, self._flat_weights, self.bias,
-                                    self.num_layers, self.dropout, self.training,
-                                    self.bidirectional)
+            result = F.rnn_relu(input, hx, self._flat_weights, self.bias, self.num_layers,
+                                self.dropout, self.training, self.bidirectional,
+                                self.batch_first)
 
         output = result[0]
         hidden = result[1]
