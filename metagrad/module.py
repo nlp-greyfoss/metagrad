@@ -249,6 +249,8 @@ class RNNBase(Module):
             device: 设备GpuDevice或CpuDevice
             dtype: 数据类型
         '''
+
+        super(RNNBase, self).__init__()
         factory_kwards = {'device': device, 'dtype': dtype}
 
         self.mode = mode
@@ -322,7 +324,7 @@ class RNNBase(Module):
                 self._all_weights.append(param_names)
 
         self._flat_weights = [(lambda wn: getattr(self, wn) if hasattr(self, wn) else None)(wn) for wn in
-                                  self._flat_weights_names]
+                              self._flat_weights_names]
 
         self.reset_parameters()
 
@@ -364,7 +366,7 @@ class RNN(RNNBase):
         '''
         # 如果输入维度数为3，说明是(batch,seq,feature)或(seq,batch,feature)这种批输入
         is_batched = input.dim() == 3
-        batch_dim = 0 if self.batch_first else 1 # 获取batch大小所在的维度
+        batch_dim = 0 if self.batch_first else 1  # 获取batch大小所在的维度
         # 如果不是批输入
         if not is_batched:
             # 在batch_dim处增加维数1，变成大小为1的批输入

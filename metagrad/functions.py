@@ -255,6 +255,55 @@ def norm(input: Tensor, p: int = 2, axis=None, keepdims=False):
         return ((input ** 2).sum(axis=axis, keepdims=keepdims)) ** (1 / 2)
 
 
+class BaseRNNStep(Function):
+    def __init__(self, mode, num_layers, dropout, training, bidirectional, batch_first):
+        self.mode = mode
+        self.num_layers = num_layers
+        self.dropout = dropout
+        self.training = training
+        self.bidirectional = bidirectional
+        self.batch_first = batch_first
+
+    def forward(self, input: NdArray, hx: NdArray, flat_weights: NdArray, bias: NdArray) -> NdArray:
+        '''
+
+        Args:
+            input: 输入
+            hx:  隐藏状态
+            flat_weights: 权重
+            bias: 偏置
+
+        Returns:
+
+        '''
+        pass
+
+
+def rnn_tanh(input, hx, flat_weights, bias, num_layers, dropout, training, bidirectional, batch_first):
+    '''
+
+    Args:
+        input: 输入
+        hx: 隐藏状态
+        flat_weights: 权重
+        bias: 偏置
+        num_layers: 层数，默认为1。若大于1，表示堆叠多个RNN
+        dropout: 多层RNN间使用dropout的比率，默认为0，代表不使用dropout
+        training: 训练 还是 推理
+        bidirectional: 如果为True，代表双向RNN
+        batch_first:  如果为True，那么输入和输出通过(batch, seq, feature)的形式，而不是(seq, batch, feature)
+
+    Returns:
+
+    '''
+
+    xp = get_array_module(input)
+
+    num_directions = 2 if bidirectional else 1
+
+
+
+
 def cos_sim(u: Tensor, v: Tensor, axis=1):
     print(u.shape, v.shape)
 
