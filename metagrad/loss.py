@@ -10,6 +10,7 @@ class _Loss(Module):
     reduction: str  # none | mean | sum
 
     def __init__(self, reduction: str = "mean") -> None:
+        super(_Loss, self).__init__()
         self.reduction = reduction
 
 

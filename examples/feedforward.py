@@ -25,6 +25,7 @@ class Feedforward(nn.Module):
         :param hidden_size: 隐藏层大小
         :param output_size: 分类个数
         '''
+        super(Feedforward, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(input_size, hidden_size),  # 隐藏层，将输入转换为隐藏向量
             nn.ReLU(),  # 激活函数

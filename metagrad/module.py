@@ -1,10 +1,7 @@
-import inspect
-import math
 import operator
 import pickle
 from collections import OrderedDict
 from itertools import chain, islice
-
 from typing import List, Optional, Tuple, Dict, Iterable, Union, Iterator, Set
 
 import metagrad.functions as F
@@ -31,13 +28,11 @@ class Module:
     '''
 
     training: bool
-    _modules: Dict[str, Optional['Module']]
-    _parameters: Dict[str, Optional[Parameter]]
 
     def __init__(self) -> None:
         self.training = True
-        self._modules = OrderedDict()
-        self._parameters = OrderedDict()
+        self._parameters: Dict[str, Optional[Parameter]] = OrderedDict()
+        self._modules: Dict[str, Optional['Module']] = OrderedDict()
 
     def register_parameter(self, name: str, param: Optional[Parameter]) -> None:
         self._parameters[name] = param
@@ -104,7 +99,7 @@ class Module:
 
     def named_children(self) -> Iterator[Tuple[str, 'Module']]:
         memo = set()
-        for name, module in self._modules.item():
+        for name, module in self._modules.items():
             if module is not None and module not in memo:
                 memo.add(module)
                 yield name, module
@@ -167,12 +162,15 @@ class Module:
         for module in self.children():
             module._apply(fn)
 
-        with no_grad():
-            for name, value in inspect.getmembers(self):
-                if isinstance(value, Parameter):
-                    fn(value)
-                elif isinstance(value, Module):
-                    [fn(p) for p in value.parameters()]
+        for key, param in self._parameters.items():
+            if param is None:
+                continue
+
+            with no_grad():
+                param_applied = fn(param)
+
+            out_param = Parameter(param_applied)
+            self._parameters[key] = out_param
 
         return self
 
@@ -219,6 +217,8 @@ class Module:
                     raise TypeError(f"cannot assign '{value}' as child module '{name}' "
                                     "(torch.nn.Module or None expected)")
                 modules[name] = value
+            else:
+                object.__setattr__(self, name, value)
 
     def __getattr__(self, name: str) -> Union[Tensor, 'Module']:
         if '_parameters' in self.__dict__:
@@ -298,11 +298,11 @@ class Linear(Module):
         """
 
     def __init__(self, in_features: int, out_features: int, bias: bool = True, device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
         super(Linear, self).__init__()
+
         self.in_features = in_features
         self.out_features = out_features
-
-        factory_kwargs = {'device': device, 'dtype': dtype}
 
         self.weight = Parameter(Tensor.empty((out_features, in_features)), **factory_kwargs)
         if bias:
@@ -362,40 +362,61 @@ class Embedding(Module):
 
 
 class Sequential(Module):
-    def __init__(self, *layers):
+    def __init__(self, *args):
         super(Sequential, self).__init__()
-        self._layers = layers
+        if len(args) == 1 and isinstance(args[0], OrderedDict):
+            for key, module in args[0].items():
+                self.add_module(key, module)
+        else:
+            for idx, module in enumerate(args):
+                self.add_module(str(idx), module)
 
-    @property
-    def layers(self):
-        return self._layers
+    def _get_item_by_idx(self, iterator, idx):
+        size = len(self)
+        idx = operator.index(idx)
+        idx %= size
+        return next(islice(iterator, idx, None))
 
-    def parameters(self) -> List[Parameter]:
-        parameters = []
-        for layer in self._layers:
-            parameters.extend(layer.parameters())
+    def __getitem__(self, idx):
+        if isinstance(idx, slice):
+            return self.__class__(OrderedDict(list(self._modules.items())[idx]))
+        else:
+            return self._get_item_by_idx(self._modules.values(), idx)
 
-        return parameters
+    def __setitem__(self, idx: int, module: Module) -> None:
+        key: str = self._get_item_by_idx(self._modules.keys(), idx)
+        return setattr(self, key, module)
 
-    def forward(self, x: Tensor) -> Tensor:
-        for layer in self._layers:
-            x = layer(x)
+    def __delitem__(self, idx: Union[slice, int]) -> None:
+        if isinstance(idx, slice):
+            for key in list(self._modules.keys())[idx]:
+                delattr(self, key)
+        else:
+            key = self._get_item_by_idx(self._modules.keys(), idx)
+            delattr(self, key)
 
-        return x
+    def __len__(self) -> int:
+        return len(self._modules)
 
-    def train(self, mode: bool = True):
-        for layer in self._layers:
-            layer.train(mode)
+    def __iter__(self) -> Iterator[Module]:
+        return iter(self._modules.values())
 
-    def eval(self):
-        for layer in self._layers:
-            layer.train(False)
+    def forward(self, input) -> Tensor:
+        for module in self:
+            input = module(input)
+        return input
+
+    def append(self, module: Module) -> 'Sequential':
+        self.add_module(str(len(self)), module)
+        return self
 
 
 class ModuleList(Module):
     _modules: Dict[str, Module]
 
     def __init__(self, modules: Optional[Iterable[Module]] = None) -> None:
+        super(ModuleList, self).__init__()
+
         if modules is not None:
             self += modules
 
@@ -468,14 +489,11 @@ class ModuleList(Module):
         return self
 
 
-class Flatten(Module):
-    def forward(self, input: Tensor) -> Tensor:
-        # 保留批次大小
-        return input.reshape(input.shape[0], -1)
-
-
 # ****激活函数作为Module实现****
 class ReLU(Module):
+    def __init__(self):
+        super(ReLU, self).__init__()
+
     def forward(self, input: Tensor) -> Tensor:
         return F.relu(input)
 
@@ -494,6 +512,9 @@ class Dropout(Module):
     def forward(self, input: Tensor) -> Tensor:
         return F.dropout(input, self.p, self.training)
 
+    def extra_repr(self) -> str:
+        return f'p={self.p}'
+
 
 class LSTMCell(Module):
     def __init__(self, input_size: int, hidden_size: int):
@@ -502,3 +523,22 @@ class LSTMCell(Module):
         self.hidden_lin = Linear(hidden_size, 4 * hidden_size)
         # 组合了 h->input gate; h-> forget gate; h-> g ; h-> output gate 的线性转换
         self.input_lin = Linear(input_size, 4 * hidden_size, bias=False)
+
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

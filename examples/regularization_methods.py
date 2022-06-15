@@ -21,6 +21,8 @@ class DynamicFFN(nn.Module):
         :param hidden_size: 隐藏层大小
         :param output_size: 分类个数
         '''
+        super(DynamicFFN, self).__init__()
+
         layers = []
 
         layers.append(nn.Linear(input_size, hidden_size))  # 隐藏层，将输入转换为隐藏向量
@@ -40,14 +42,14 @@ class DynamicFFN(nn.Module):
 
     def weights(self) -> List[Parameter]:
         parameters = []
-        for layer in self.net.layers:
+        for layer in self.net:
             if isinstance(layer, nn.Linear):
                 parameters.append(layer.weight)
         return parameters
 
     def bias(self) -> List[Parameter]:
         parameters = []
-        for layer in self.net.layers:
+        for layer in self.net:
             if isinstance(layer, nn.Linear):
                 parameters.append(layer.bias)
         return parameters

@@ -272,6 +272,7 @@ class Tensor:
         '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
 
+
     #
     # def squeeze(self, axis=None) -> "Tensor":
     #     return Tensor(self.array().squeeze(axis=axis), device=self.device, requires_grad=self.requires_grad)
