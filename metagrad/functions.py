@@ -210,9 +210,9 @@ def embedding(weight: Tensor, indices: Tensor) -> Tensor:
 class Split(Function):
     '''Stack的逆操作'''
 
-    def forward(ctx, inputs: NdArray, axis: int) -> NdArray:
+    def forward(ctx, inputs: NdArray, indices_or_sections, axis: int) -> NdArray:
         xp = get_array_module(inputs)
-        xs = xp.split(inputs, inputs.shape[axis], axis)
+        xs = xp.split(inputs, indices_or_sections, axis)
         ys = [xp.squeeze(y, axis) for y in xs]  # 去掉维度axis
         ctx.save_for_backward(len(ys), axis)
 

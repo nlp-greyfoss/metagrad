@@ -524,21 +524,61 @@ class LSTMCell(Module):
         # 组合了 h->input gate; h-> forget gate; h-> g ; h-> output gate 的线性转换
         self.input_lin = Linear(input_size, 4 * hidden_size, bias=False)
 
-        
+    def forward(self, x: Tensor, h: Tensor, c: Tensor) -> Tensor:
+        ifgo = self.hidden_lin(h) + self.input_lin(x)
+        ifgo = F.split(ifgo, -1)
+        # 一次性计算这四个门
+        i, f, g, o = ifgo
+
+        c_next = F.sigmoid(f) * c + F.sigmoid(i) * F.tanh(g)
+
+        h_next = F.sigmoid(o) * F.tanh(c_next)
+
+        return h_next, c_next
 
 
+class LSTM(Module):
+    def __init__(self, input_size: int, hidden_size: int, n_layers: int = 1):
+        super(LSTM, self).__init__()
+        self.n_layers = n_layers
+        self.hidden_size = hidden_size
+        # 支持多层
+        self.cells = ModuleList([LSTMCell(input_size, hidden_size)] +
+                                [LSTMCell(hidden_size, hidden_size) for _ in range(n_layers - 1)])
 
+    def forward(self, x: Tensor, state: Optional[Tuple[Tensor, Tensor]] = None):
+        '''
 
+        Args:
+            x: 形状 [n_steps, batch_size, input_size]
+            state: 元组(h,c) 每个形状[batch_size, hidden_size]
 
+        Returns:
 
+        '''
+        n_steps, batch_size = x.shape[:2]
 
+        if state is None:
+            # 初始化
+            h = [x.zeros((batch_size, self.hidden_size)) for _ in range(self.n_layers)]
+            c = [x.zeros((batch_size, self.hidden_size)) for _ in range(self.n_layers)]
+        else:
+            h, c = state
+            # 得到每层的状态
+            h, c = list(F.split(h)), list(F.split(c))
 
+        out = []
+        for t in range(n_steps):
+            inp = x[t]
 
+            for layer in range(self.n_layers):
+                h[layer], c[layer] = self.cells[layer](inp, h[layer], c[layer])
+                inp = h[layer]
+            # 收集最终层的输出
+            out.append(h[-1])
 
+        out = F.stack(out)
+        h = F.stack(h)
+        c = F.stack(c)
 
-
-
-
-
-
-
+        return out, (h, c)
