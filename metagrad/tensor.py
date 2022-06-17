@@ -478,7 +478,7 @@ class Tensor:
 
             with using_config('backprop', create_grahp):
                 with OpWrapper(f.__class__.__name__, gys, backward=True):
-                    gxs = f.backward(gys)
+                    gxs = f.backward(*gys)
                 if not isinstance(gxs, tuple):
                     gxs = (gxs,)
 

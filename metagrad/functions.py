@@ -294,9 +294,9 @@ class Chunk(Function):
 
         return tuple(ret)
 
-    def backward(self, grad: NdArray) -> NdArray:
+    def backward(self, *grad: List[NdArray]) -> NdArray:
         xp, axis, shapes, dtype = self.saved_tensors
-        grads = [Tensor(xp.zeros(shape, dtype=dtype)) if g is None else Tensor(g) for g, shape in zip(grad, shapes)]
+        grads = [xp.zeros(shape, dtype=dtype) if g is None else Tensor(g) for g, shape in zip(grad, shapes)]
         return cat(grads, axis)
 
 
