@@ -3,6 +3,8 @@ import importlib
 import inspect
 import time
 import os
+import weakref
+
 from numbers import Number
 from typing import Union, Tuple, Any, List
 
@@ -145,6 +147,8 @@ class Tensor:
             device = get_device_from_array(data)
 
         self._device = device
+        self.creator = None
+        self.generation = 0
 
         # data 是 NdArray
         self._data = ensure_array(data, dtype, self._device)
@@ -272,6 +276,12 @@ class Tensor:
         '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
 
+    def set_creator(self, func):
+        self.creator = func
+        self.generation = func.generation + 1
+
+    def unchain(self):
+        self.creator = None
 
     #
     # def squeeze(self, axis=None) -> "Tensor":
@@ -426,7 +436,7 @@ class Tensor:
 
         return reversed(visit(self, set(), []))
 
-    def backward(self, grad: "Tensor" = None) -> None:
+    def backward(self, grad: "Tensor" = None, retain_grad=False, create_grahp=False) -> None:
         '''
         实现Tensor的反向传播
         Args:
@@ -447,34 +457,77 @@ class Tensor:
                 # 设置梯度值为1，grad本身不需要计算梯度
                 self._grad = Tensor(1., device=self.device)
             else:
-                # 如果当前Tensor得到不是标量，那么grad必须制定
+                # 如果当前Tensor得到不是标量，那么grad必须指定
                 raise RuntimeError("grad must be specified for non scalar")
         else:
             self._grad = ensure_tensor(grad, device=self.device)
 
-        for t0 in self._rev_topo_sort():
-            if not any(x.requires_grad for x in t0._ctx.depends_on):
-                continue
+        funcs = []
+        seen_set = set()
 
-            assert t0.grad is not None
+        def add_func(f):
+            if f not in seen_set:
+                funcs.append(f)
+                seen_set.add(f)
+                funcs.sort(key=lambda x: x.generation)
 
-            with OpWrapper(t0._ctx.__class__.__name__, [t0.grad], backward=True):
-                # 以逆序计算梯度，调用t相关运算操作的backward静态方法
-                # 计算流向其依赖节点上的梯度(流向其下游)
-                grads = t0._ctx.backward(t0._ctx, t0.grad.data)
+        add_func(self.creator)
+        while funcs:
+            f = funcs.pop()
+            gys = [output().grad.data for output in f.outputs]  # output 是 weakref
 
-            # 如果只依赖一个输入，我们也通过列表来封装，防止zip将其继续拆分
-            if len(t0._ctx.depends_on) == 1 or not isinstance(grads, tuple):
-                grads = [grads]
+            with using_config('backprop', create_grahp):
+                with OpWrapper(f.__class__.__name__, gys, backward=True):
+                    gxs = f.backward(gys)
+                if not isinstance(gxs, tuple):
+                    gxs = (gxs,)
 
-            for t, g in zip(t0._ctx.depends_on, grads):
-                # 计算其下游节点上的累积梯度，因为可能有多条边
-                if t.requires_grad and g is not None:
-                    # t.shape要和grad.shape保持一致
-                    assert t.shape == g.shape, f"grad shape must match tensor shape in {self._ctx!r}, {g.shape!r} != {t.shape!r}"
-                    # grad Tensor
-                    gt = Tensor(g, device=self.device, dtype=self.dtype)
-                    t._grad = gt if t.grad is None else t.grad + gt
+                for x, gx in zip(f.inputs, gxs):
+                    if x.grad is None:
+                        x._grad = gx
+                    else:
+                        x._grad = x.grad + gx
+
+                    if x.creator is not None:
+                        add_func(x.creator)
+
+            if not retain_grad:
+                for y in f.outputs:
+                    y()._grad = None
+
+        # for t0 in self._rev_topo_sort():
+        #     if not any(x.requires_grad for x in t0._ctx.depends_on):
+        #         continue
+        #
+        #     assert t0.grad is not None
+        #
+        #     with OpWrapper(t0._ctx.__class__.__name__, [t0.grad], backward=True):
+        #         # 以逆序计算梯度，调用t相关运算操作的backward静态方法
+        #         # 计算流向其依赖节点上的梯度(流向其下游)
+        #         grads = t0._ctx.backward(t0._ctx, t0.grad.data)
+        #
+        #     # 如果只依赖一个输入，我们也通过列表来封装，防止zip将其继续拆分
+        #     if len(t0._ctx.depends_on) == 1 or not isinstance(grads, tuple):
+        #         grads = [grads]
+        #
+        #     for t, g in zip(t0._ctx.depends_on, grads):
+        #         # 计算其下游节点上的累积梯度，因为可能有多条边
+        #         if t.requires_grad and g is not None:
+        #             # t.shape要和grad.shape保持一致
+        #             assert t.shape == g.shape, f"grad shape must match tensor shape in {self._ctx!r}, {g.shape!r} != {t.shape!r}"
+        #             # grad Tensor
+        #             gt = Tensor(g, device=self.device, dtype=self.dtype)
+        #             t._grad = gt if t.grad is None else t.grad + gt
+
+    def unchain_backward(self):
+        if self.creator is not None:
+            funcs = [self.creator]
+            while funcs:
+                f = funcs.pop()
+                for x in f.inputs:
+                    if x.creator is not None:
+                        funcs.append(x.creator)
+                        x.unchain()
 
 
 def register(name, fxn):
@@ -484,7 +537,7 @@ def register(name, fxn):
 
         xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
 
-        return fxn.apply(fxn, *xs, **kwargs)
+        return fxn()(*xs, **kwargs)
 
     if name in ["pow", "neg", "abs"]:
         setattr(Tensor, f"__{name}__", dispatch)

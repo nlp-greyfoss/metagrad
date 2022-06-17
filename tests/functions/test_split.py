@@ -28,3 +28,28 @@ def test_simple_split():
     assert np.allclose(mx.grad.data, tx.grad.data)
 
 
+def test_split():
+    x = np.arange(6).reshape((2, 3)).astype(np.float32)
+    # x = array([[0., 1., 2.],
+    #           [3., 4., 5.]], dtype=float32)
+
+    mx = Tensor(x, requires_grad=True)
+
+    tx = torch.tensor(x, requires_grad=True)
+
+    my = F.split(mx)
+    ty = torch.split(tx, 1)
+
+    # 这里返回的是元组
+    assert isinstance(my, tuple)
+
+    assert np.allclose(my[0].data, ty[0].data)
+
+    (my[0]).sum().backward()
+    (ty[0]).sum().backward()
+
+    print(mx.grad.data)
+    print(tx.grad.data)
+
+    assert np.allclose(mx.grad.data, tx.grad.data)
+

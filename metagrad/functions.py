@@ -13,37 +13,37 @@ class Relu(Function):
     实现relu激活函数
     '''
 
-    def forward(ctx, x: NdArray) -> NdArray:
-        ctx.save_for_backward(x)
+    def forward(self, x: NdArray) -> NdArray:
+        self.save_for_backward(x)
         xp = get_array_module(x)
         return xp.maximum(x, 0)
 
-    def backward(ctx, grad: NdArray) -> NdArray:
-        x, = ctx.saved_tensors
+    def backward(self, grad: NdArray) -> NdArray:
+        x, = self.saved_tensors
         return grad * (x > 0)
 
 
 class LeakyRelu(Function):
-    def forward(ctx, x: NdArray, slope: float = 0.01) -> NdArray:
-        ctx.save_for_backward(x, slope)
+    def forward(self, x: NdArray, slope: float = 0.01) -> NdArray:
+        self.save_for_backward(x, slope)
         xp = get_array_module(x)
         return xp.maximum(x, 0) + slope * xp.minimum(x, 0)
 
-    def backward(ctx, grad: NdArray) -> NdArray:
-        x, slope = ctx.saved_tensors
+    def backward(self, grad: NdArray) -> NdArray:
+        x, slope = self.saved_tensors
         mask = np.array(x > 0).astype(grad.dtype)  # x > 0 : 1
         mask[mask <= 0] = slope  # x <=0 : slope
         return grad * mask
 
 
 class ELU(Function):
-    def forward(ctx, x: NdArray, alpha: float = 1) -> NdArray:
+    def forward(self, x: NdArray, alpha: float = 1) -> NdArray:
         xp = get_array_module(x)
-        ctx.save_for_backward(x, alpha, xp)
+        self.save_for_backward(x, alpha, xp)
         return xp.maximum(x, 0) + xp.minimum(0, alpha * (xp.exp(x) - 1))
 
-    def backward(ctx, grad: NdArray) -> NdArray:
-        x, alpha, xp = ctx.saved_tensors
+    def backward(self, grad: NdArray) -> NdArray:
+        x, alpha, xp = self.saved_tensors
         mask = xp.array(x > 0).astype(grad.dtype)  # x > 0 : 1 加上np.array 兼容标量
         indices = (mask <= 0)
         mask[indices] = alpha * xp.exp(x)[indices]  # x <= 0 :  alpha * exp(x)
@@ -66,19 +66,19 @@ def logsigmoid(x: Tensor) -> Tensor:
 # def relu(x: Tensor) -> Tensor:
 #     return x * (x > 0)
 def relu(x: Tensor) -> Tensor:
-    return Relu.apply(Relu, x)
+    return Relu()(x)
 
 
 # def leaky_relu(x: Tensor, slope: float = 0.1) -> Tensor:
 #    return x * (x > 0) + slope * x * (x < 0)
 def leaky_relu(x: Tensor, slope: float = 0.01) -> Tensor:
-    return LeakyRelu.apply(LeakyRelu, x, slope=slope)
+    return LeakyRelu()(x, slope=slope)
 
 
 # def elu(x: Tensor, a: float = 1) -> Tensor:
 #    return x * (x > 0) + a * (x.exp() - 1) * (x < 0)
 def elu(x: Tensor, alpha: float = 1) -> Tensor:
-    return ELU.apply(ELU, x, alpha=alpha)
+    return ELU(x, alpha=alpha)
 
 
 def swish(x: Tensor) -> Tensor:
@@ -182,12 +182,12 @@ def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
 
 
 class Embedding(Function):
-    def forward(ctx, weight: NdArray, indices: NdArray) -> NdArray:
-        ctx.save_for_backward(weight.shape, indices)
+    def forward(self, weight: NdArray, indices: NdArray) -> NdArray:
+        self.save_for_backward(weight.shape, indices)
         return weight[indices]
 
-    def backward(ctx, grad: NdArray) -> Tuple[NdArray, None]:
-        w_shape, indices = ctx.saved_tensors
+    def backward(self, grad: NdArray) -> Tuple[NdArray, None]:
+        w_shape, indices = self.saved_tensors
 
         xp = get_array_module(grad)
 
@@ -204,46 +204,104 @@ class Embedding(Function):
 
 
 def embedding(weight: Tensor, indices: Tensor) -> Tensor:
-    return Embedding.apply(Embedding, weight, indices)
+    return Embedding(weight, indices)
 
 
 class Split(Function):
     '''Stack的逆操作'''
 
-    def forward(ctx, inputs: NdArray, indices_or_sections, axis: int) -> NdArray:
+    def forward(self, inputs: NdArray, axis: int) -> NdArray:
         xp = get_array_module(inputs)
-        xs = xp.split(inputs, indices_or_sections, axis)
+        xs = xp.split(inputs, inputs.shape[axis], axis)
         ys = [xp.squeeze(y, axis) for y in xs]  # 去掉维度axis
-        ctx.save_for_backward(len(ys), axis)
+        self.save_for_backward(xp, axis, ys[0].shape, inputs.dtype)
 
         return tuple(ys)
 
-    def backward(ctx, grad: NdArray) -> NdArray:
-        size, axis = ctx.saved_tensors
-        grad /= size
-        bigger_grad = [Tensor(grad)] * size
-        return stack(bigger_grad, axis)
+    def backward(self, grad: NdArray) -> NdArray:
+        xp, axis, shape, dtype = self.saved_tensors
+        grads = [xp.zeros(shape, dtype) if g is None else g for g in grad]
+        return stack(grads, axis)
 
 
-def split(x, axis=0):
-    return Split().apply(Split, x, axis=axis)
+def split(x: Tensor, axis: int = 0):
+    return Split()(Split, x, axis=axis)
 
 
 class Stack(Function):
-    def forward(ctx, *inputs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int) -> NdArray:
+    '''
+    在指定维度上进行堆叠，会增加维度
+    维数：指有多少维
+    维度：某个维的元素个数
+
+    比如(2,3)的维数是2；第1个维度是2；第2个维度是3
+
+    '''
+
+    def forward(self, *inputs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int) -> NdArray:
         xp = get_array_module(inputs[0])
         ret = xp.stack(inputs, axis=axis)
-        ctx.save_for_backward(axis)
+        self.save_for_backward(axis)
         return ret
 
-    def backward(ctx, grad: NdArray) -> NdArray:
-        axis, = ctx.saved_tensors
+    def backward(self, grad: NdArray) -> NdArray:
+        axis, = self.saved_tensors
         # todo 支持gpu
         return split(Tensor(grad), axis)
 
 
 def stack(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
-    return Stack().apply(Stack, *xs, axis=axis)
+    return Stack()(*xs, axis=axis)
+
+
+class Cat(Function):
+    '''
+    在原有某一维度进行拼接，拼接的结果是Tensor的总维数不变，其中用于拼接的那一维度等于各分量维度之和
+    '''
+
+    def forward(self, *inputs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = -1) -> NdArray:
+        xp = get_array_module(inputs[0])
+        self.save_for_backward(inputs, axis)
+        return xp.concatenate(inputs, axis)
+
+    def backward(self, grad: NdArray) -> NdArray:
+        inputs, axis = self.saved_tensors
+        if len(inputs) == 1:
+            return grad
+
+        # 可能会不均分，所以大小可能不一致
+        sizes = np.array(
+            [x.shape[axis] for x in inputs[:-1]]
+        ).cumsum()  # 计算累积和
+
+        return chunk(grad, sizes, axis)
+
+
+def cat(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
+    return Cat()(*xs, axis=axis)
+
+
+class Chunk(Function):
+    '''
+    cat的逆操作，将Tensor沿某一维分开，chunks为分割的份数，axis为分割的维度
+    '''
+
+    def forward(self, inputs: NdArray, chunks: int, axis: int) -> Tuple[NdArray]:
+        xp = get_array_module(inputs)
+        ret = xp.array_split(inputs, chunks, axis)
+        shapes = [x.shape for x in ret]
+        self.save_for_backward(xp, axis, shapes, inputs.dtype)
+
+        return tuple(ret)
+
+    def backward(self, grad: NdArray) -> NdArray:
+        xp, axis, shapes, dtype = self.saved_tensors
+        grads = [Tensor(xp.zeros(shape, dtype=dtype)) if g is None else Tensor(g) for g, shape in zip(grad, shapes)]
+        return cat(grads, axis)
+
+
+def chunk(input: Tensor, chunks: int, axis=0):
+    return Chunk()(input, chunks=chunks, axis=axis)
 
 
 # 简单的norm实现

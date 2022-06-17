@@ -526,7 +526,7 @@ class LSTMCell(Module):
 
     def forward(self, x: Tensor, h: Tensor, c: Tensor) -> Tensor:
         ifgo = self.hidden_lin(h) + self.input_lin(x)
-        ifgo = F.split(ifgo, -1)
+        ifgo = F.chunk(ifgo, 4, -1)
         # 一次性计算这四个门
         i, f, g, o = ifgo
 

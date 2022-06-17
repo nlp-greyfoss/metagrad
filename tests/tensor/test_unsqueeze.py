@@ -21,7 +21,7 @@ def test_simple_unsqueeze():
     assert np.allclose(mx.grad.data, tx.grad.data)
 
 
-def test_squeeze():
+def test_unsqueeze():
     x = np.array([1, 2, 3, 4])
 
     mx = Tensor(x, requires_grad=True)
