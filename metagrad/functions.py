@@ -78,7 +78,7 @@ def leaky_relu(x: Tensor, slope: float = 0.01) -> Tensor:
 # def elu(x: Tensor, a: float = 1) -> Tensor:
 #    return x * (x > 0) + a * (x.exp() - 1) * (x < 0)
 def elu(x: Tensor, alpha: float = 1) -> Tensor:
-    return ELU(x, alpha=alpha)
+    return ELU()(x, alpha=alpha)
 
 
 def swish(x: Tensor) -> Tensor:
