@@ -204,7 +204,7 @@ class Embedding(Function):
 
 
 def embedding(weight: Tensor, indices: Tensor) -> Tensor:
-    return Embedding(weight, indices)
+    return Embedding()(weight, indices)
 
 
 class Split(Function):

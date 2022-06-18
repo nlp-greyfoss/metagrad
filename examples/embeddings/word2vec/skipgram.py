@@ -2,13 +2,12 @@ import numpy as np
 from tqdm import tqdm
 
 import metagrad.module as nn
-from examples.embeddings.utils import save_pretrained
+from examples.embeddings.utils import save_pretrained,BOS_TOKEN, EOS_TOKEN, WEIGHT_INIT_RANGE, load_corpus
 from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
 from metagrad.loss import CrossEntropyLoss
 from metagrad.optim import SGD
-from utils import BOS_TOKEN, EOS_TOKEN, WEIGHT_INIT_RANGE, load_corpus
 
 
 class SkipGramDataset(Dataset):
@@ -52,6 +51,7 @@ class SkipGramDataset(Dataset):
 
 class SkipGramModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
+        super(SkipGramModel, self).__init__()
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
         self.output = nn.Linear(embedding_dim, vocab_size)
 

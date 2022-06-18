@@ -443,7 +443,7 @@ class Tensor:
                     gxs = (gxs,)
 
                 for x, gx in zip(f.inputs, gxs):
-                    if x.required_grad and gx is not None:
+                    if x.requires_grad and gx is not None:
                         assert x.shape == gx.shape, f"grad shape must match tensor shape in {f!r}, {gx.shape!r} != {x.shape!r}"
 
                         gx = Tensor(gx, device=self.device, dtype=self.dtype)

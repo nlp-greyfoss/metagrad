@@ -1,12 +1,11 @@
 import numpy as np
 from tqdm import tqdm
 
-from examples.embeddings.utils import save_pretrained
+from examples.embeddings.utils import save_pretrained,BOS_TOKEN, EOS_TOKEN, PAD_TOKEN, load_corpus
 from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.optim import SGD
 from metagrad.tensor import debug_mode
-from utils import BOS_TOKEN, EOS_TOKEN, PAD_TOKEN, load_corpus
 from metagrad.dataset import Dataset
 import metagrad.functions as F
 import metagrad.module as nn
@@ -61,6 +60,7 @@ class SGNSDataset(Dataset):
 
 class SGNSModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
+        super(SGNSModel, self).__init__()
         # 目标词嵌入
         self.w_embeddings = nn.Embedding(vocab_size, embedding_dim)
         # 上下文嵌入

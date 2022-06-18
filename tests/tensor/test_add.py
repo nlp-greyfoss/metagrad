@@ -1,7 +1,6 @@
 from metagrad.tensor import Tensor
 import numpy as np
 
-
 def test_simple_add():
     x = Tensor(1, requires_grad=True)
     y = 2
