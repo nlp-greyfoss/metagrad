@@ -13,19 +13,9 @@ ops.py保存所有运算操作相关的类
 
 
 class Function:
-    def __init__(self, *tensors: "Tensor") -> None:
-        # 该操作所依赖的所有输入
-        # self.depends_on = [t for t in tensors]
+    def __init__(self) -> None:
         # 保存需要在backward()中使用的Tensor或其他对象(如Shape)
         self.saved_tensors = []
-
-    # def __new__(cls, *args, **kwargs):
-    #     '''__new__是静态方法，当该类被实例化时调用'''
-    #     # 把以下方法转换为静态方法，我们可以通过类名直接调用
-    #     cls.forward = staticmethod(cls.forward)
-    #     cls.backward = staticmethod(cls.backward)
-    #     cls.apply = staticmethod(cls.apply)
-    #     return super().__new__(cls)
 
     def save_for_backward(self, *x: Any) -> None:
         self.saved_tensors.extend(x)
@@ -40,10 +30,6 @@ class Function:
                                   "to use it with backward mode AD.")
 
     def __call__(self, *xs: "Tensor", **kwargs) -> "Tensor":
-        '''与PyTorch一样，我们也不直接调用forward，而是调用此方法'''
-        # 先调用构造函数，传入运算依赖的Tensor
-        # self = self(*xs)  # 调用到了_Function的__init__方法
-
         # [t.data for t in xs]遍历Tensor中的data(NdArray)值，参与实际计算的都是NumPy的数组。
         ys = self.forward(*[t.data for t in xs], **kwargs)
 
@@ -61,7 +47,8 @@ class Function:
             self.inputs = xs
             self.outputs = [weakref.ref(output) for output in outputs]
 
-        return outputs if len(outputs) > 1 else outputs[0]
+        # 返回多个则通过元组
+        return tuple(outputs) if len(outputs) > 1 else outputs[0]
 
 
 def unbroadcast(grad: NdArray, in_shape: Tuple) -> NdArray:

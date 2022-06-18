@@ -218,14 +218,14 @@ class Split(Function):
 
         return tuple(ys)
 
-    def backward(self, grad: NdArray) -> NdArray:
+    def backward(self, *grad: List[NdArray]) -> NdArray:
         xp, axis, shape, dtype = self.saved_tensors
-        grads = [xp.zeros(shape, dtype) if g is None else g for g in grad]
+        grads = [Tensor(xp.zeros(shape, dtype)) if g is None else Tensor(g) for g in grad]
         return stack(grads, axis)
 
 
 def split(x: Tensor, axis: int = 0):
-    return Split()(Split, x, axis=axis)
+    return Split()(x, axis=axis)
 
 
 class Stack(Function):
@@ -273,8 +273,8 @@ class Cat(Function):
         sizes = np.array(
             [x.shape[axis] for x in inputs[:-1]]
         ).cumsum()  # 计算累积和
-
-        return chunk(grad, sizes, axis)
+        d = type(grad)
+        return chunk(Tensor(grad), sizes, axis)
 
 
 def cat(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
@@ -286,7 +286,7 @@ class Chunk(Function):
     cat的逆操作，将Tensor沿某一维分开，chunks为分割的份数，axis为分割的维度
     '''
 
-    def forward(self, inputs: NdArray, chunks: int, axis: int) -> Tuple[NdArray]:
+    def forward(self, inputs: NdArray, chunks: Union[int, NdArray], axis: int) -> Tuple[NdArray]:
         xp = get_array_module(inputs)
         ret = xp.array_split(inputs, chunks, axis)
         shapes = [x.shape for x in ret]
@@ -296,7 +296,7 @@ class Chunk(Function):
 
     def backward(self, *grad: List[NdArray]) -> NdArray:
         xp, axis, shapes, dtype = self.saved_tensors
-        grads = [xp.zeros(shape, dtype=dtype) if g is None else Tensor(g) for g, shape in zip(grad, shapes)]
+        grads = [Tensor(xp.zeros(shape, dtype=dtype)) if g is None else Tensor(g) for g, shape in zip(grad, shapes)]
         return cat(grads, axis)
 
 

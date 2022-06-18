@@ -2,6 +2,7 @@ import functools
 from numbers import Number
 
 import numpy
+
 import metagrad
 
 

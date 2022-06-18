@@ -15,8 +15,8 @@ def test_simple_chunk():
     my = F.chunk(mx, 2)
     ty = torch.chunk(tx, 2)
 
-    # 这里返回的是列表
-    assert isinstance(my, list)
+    # 这里返回的是元组
+    assert isinstance(my, tuple)
 
     assert np.allclose(my[0].data, ty[0].data)
     assert np.allclose(my[-1].data, ty[-1].data)
