@@ -516,6 +516,96 @@ class Dropout(Module):
         return f'p={self.p}'
 
 
+class RNNCell(Module):
+    def __init__(self, input_size, hidden_size: int, bias: bool = True, nonlinearity: str = 'tanh') -> None:
+        '''
+
+        :param input_size: 输入x的特征数
+        :param hidden_size: 隐藏状态的特征数
+        :param bias: 线性层是否包含偏置
+        :param nonlinearity: 非线性激活函数 tanh | relu
+        '''
+        super(RNNCell, self).__init__()
+        # 输入x的线性变换
+        self.input_trans = Linear(input_size, hidden_size, bias=bias)
+        # 隐藏状态的线性变换
+        self.hidden_trans = Linear(hidden_size, hidden_size, bias=bias)
+
+        if nonlinearity == 'tanh':
+            self.activate_func = F.tanh
+        else:
+            self.activate_func = F.relu
+
+    def forward(self, x: Tensor, h: Tensor) -> Tensor:
+        '''
+        单个RNN的前向传播
+        :param x:  形状 [batch_size, input_size]
+        :param h:  形状 [batch_size, hidden_size]
+        :return:
+        '''
+        # [batch_size, input_size] x [input_size, hidden_size] + [batch_size, hidden_size] x [hidden_size, hidden_size]
+        # = [batch_size, hidden_size]
+        h_next = self.activate_func(self.input_trans(x) + self.hidden_trans(h))
+        return h_next
+
+
+class RNN(Module):
+    def __init__(self, input_size: int, hidden_size: int, num_layers: int = 1, nonlinearity: str = 'tanh',
+                 bias: bool = True, dropout: float = 0) -> None:
+        '''
+
+        :param input_size:  输入x的特征数
+        :param hidden_size: 隐藏状态的特征数
+        :param num_layers: 层数
+        :param nonlinearity: 非线性激活函数 tanh | relu
+        :param bias: 线性层是否包含偏置
+        :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
+        '''
+        super(RNN, self).__init__()
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
+        # 支持多层
+        self.cells = ModuleList([RNNCell(input_size, hidden_size, bias, nonlinearity)] +
+                                [RNNCell(hidden_size, hidden_size) for _ in range(num_layers - 1)])
+        self.dropout = dropout
+        if dropout:
+            # Dropout层
+            self.dropout_layer = Dropout(dropout)
+
+    def forward(self, input: Tensor, h_0: Tensor) -> Tuple[Tensor, Tensor]:
+        '''
+        RNN的前向传播
+        :param input: 形状 [n_steps, batch_size, input_size]
+        :param h_0: 形状 [num_layers, batch_size, hidden_size]
+        :return:
+        '''
+        n_steps, batch_size = input.shape[:2]
+
+        if h_0 is None:
+            h = [input.zeros((batch_size, self.hidden_size)) for _ in range(self.n_layers)]
+        else:
+            h = h_0
+            h = list(F.split(h))
+
+        out = []
+        for t in range(n_steps):
+            inp = input[t]
+
+            for layer in range(self.num_layers):
+                h[layer] = self.cells[layer](inp, h[layer])
+                inp = h[layer]
+                if self.dropout and layer != self.num_layers - 1:
+                    inp = self.dropout_layer(inp)
+
+            # 收集最终层的输出
+            out.append(h[-1])
+
+        out = F.stack(out)
+        h = F.stack(h)
+
+        return out, h
+
+
 class LSTMCell(Module):
     def __init__(self, input_size: int, hidden_size: int):
         super(LSTMCell, self).__init__()
@@ -524,7 +614,7 @@ class LSTMCell(Module):
         # 组合了 h->input gate; h-> forget gate; h-> g ; h-> output gate 的线性转换
         self.input_lin = Linear(input_size, 4 * hidden_size, bias=False)
 
-    def forward(self, x: Tensor, h: Tensor, c: Tensor) -> Tensor:
+    def forward(self, x: Tensor, h: Tensor, c: Tensor) -> Tuple[Tensor, Tensor]:
         ifgo = self.hidden_lin(h) + self.input_lin(x)
         ifgo = F.chunk(ifgo, 4, -1)
         # 一次性计算这四个门
