@@ -273,7 +273,6 @@ class Cat(Function):
         sizes = np.array(
             [x.shape[axis] for x in inputs[:-1]]
         ).cumsum()  # 计算累积和
-        d = type(grad)
         return chunk(Tensor(grad), sizes, axis)
 
 

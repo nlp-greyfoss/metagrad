@@ -42,10 +42,10 @@ class Function:
 
         if Config.backprop:
             self.generation = max([x.generation for x in xs])
-            for output in outputs:
+            for output in outputs:  # 设定每个输出是由此函数得到的
                 output.set_creator(self)
-            self.inputs = xs
-            self.outputs = [weakref.ref(output) for output in outputs]
+            self.inputs = xs  # 记录输入
+            self.outputs = [weakref.ref(output) for output in outputs]  # 通过弱引用记录输出
 
         # 返回多个则通过元组
         return tuple(outputs) if len(outputs) > 1 else outputs[0]

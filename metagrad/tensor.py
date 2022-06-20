@@ -428,12 +428,14 @@ class Tensor:
 
         def add_func(f):
             if f not in seen_set:
+                # heapq是小顶堆，为了实现大顶堆的效果，需要加一个负号
                 heapq.heappush(funcs, (-f.generation, len(seen_set), f))
                 seen_set.add(f)
 
         add_func(self.creator)
         while funcs:
             _, _, f = heapq.heappop(funcs)
+            # 获取输出对应的梯度，解决多个输出梯度不一致的问题
             gys = [output().grad.data for output in f.outputs]  # output 是 weakref
 
             with using_config('backprop', create_graph):

@@ -31,3 +31,27 @@ def test_simple_chunk():
     (ty0 + ty1).sum().backward()
 
     assert np.allclose(mx.grad.data, tx.grad.data)
+
+
+def test_chunk():
+    x = np.arange(11).astype(np.float32)
+
+    mx = Tensor(x, requires_grad=True)
+
+    tx = torch.tensor(x, requires_grad=True)
+
+    my = F.chunk(mx, 6)
+    ty = torch.chunk(tx, 6)
+
+    # 这里返回的是元组
+    assert isinstance(my, tuple)
+
+    assert np.allclose(my[0].data, ty[0].data)
+    assert np.allclose(my[-1].data, ty[-1].data)
+
+    (my[0]).sum().backward()
+    (ty[0]).sum().backward()
+
+    print(mx.grad.data)
+
+    assert np.allclose(mx.grad.data, tx.grad.data)
