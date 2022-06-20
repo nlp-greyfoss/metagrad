@@ -585,7 +585,7 @@ class RNN(Module):
             h = [input.zeros((batch_size, self.hidden_size)) for _ in range(self.n_layers)]
         else:
             h = h_0
-            h = list(F.split(h))
+            h = list(F.unbind(h))  # 按层数拆分h
 
         out = []
         for t in range(n_steps):

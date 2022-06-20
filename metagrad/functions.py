@@ -228,6 +228,9 @@ def split(x: Tensor, axis: int = 0):
     return Split()(x, axis=axis)
 
 
+unbind = split
+
+
 class Stack(Function):
     '''
     在指定维度上进行堆叠，会增加维度

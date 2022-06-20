@@ -387,7 +387,9 @@ class Tensor:
         return self.slice(idxs)
 
     def __setitem__(self, key, value):
-        self.data[key] = value.item()
+        if isinstance(value, Tensor):
+            value = value.data
+        self.data[key] = value
         # self._grad = None
         return self
 
