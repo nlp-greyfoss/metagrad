@@ -69,9 +69,9 @@ def load_treebank():
 embedding_dim = 128
 hidden_dim = 256
 batch_size = 32
-num_epoch = 5
+num_epoch = 100
 n_layers = 2
-dropout = 0.5
+dropout = 0.2
 
 # 加载数据
 train_data, test_data, vocab, pos_vocab = load_treebank()

@@ -75,18 +75,3 @@ def test_integer_indexing():
                                     [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                     [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]]
-
-
-def test_array_indexing():
-    a = np.random.randn(32, 56)
-    mask = a > 0
-    print(mask.shape)
-
-    b = np.random.randn(32, 56, 47)
-    print(b[mask].shape)
-
-    x = Tensor(b, requires_grad=True)
-
-    mask = Tensor(mask)
-    y = x[mask]
-    print(y.shape)
