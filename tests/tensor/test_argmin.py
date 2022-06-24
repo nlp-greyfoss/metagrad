@@ -4,17 +4,17 @@ import torch
 from metagrad.tensor import Tensor
 
 
-def test_simple_argmax():
+def test_simple_argmin():
     x = np.random.randn(4, 4)
     mx = Tensor(x)
     tx = torch.tensor(x)
 
-    assert mx.argmax().item() == tx.argmax().item()
+    assert mx.argmin().item() == tx.argmin().item()
 
 
-def test_argmax():
+def test_argmin():
     x = np.random.randn(4, 4)
     mx = Tensor(x)
     tx = torch.tensor(x)
 
-    assert mx.argmax(axis=1).data.tolist() == tx.argmax(dim=1).data.tolist()
+    assert mx.argmin(axis=1).data.tolist() == tx.argmin(dim=1).data.tolist()

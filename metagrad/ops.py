@@ -442,6 +442,7 @@ def argone(shape):
 
 # ****变形和切片****
 class Slice(Function):
+
     def forward(self, x: NdArray, slices: Any) -> NdArray:
         '''
         z = x[slices]
@@ -464,6 +465,32 @@ class Slice(Function):
         return bigger_grad, None
 
 
+class _IndexSelect(Function):
+    '''
+    返回索引基类，这种类是没有梯度的，因为返回的只是索引
+    '''
+
+    def fwd(self, x: NdArray, xp, axis):
+        raise NotImplementedError("You must implement the fwd function in sub class.")
+
+    def forward(self, x: NdArray, axis=None) -> NdArray:
+        xp = get_array_module(x)
+        return self.fwd(x, xp, axis)
+
+    def backward(self, grad: NdArray) -> NdArray:
+        return None
+
+
+class ArgMax(_IndexSelect):
+    def fwd(self, x: NdArray, xp, axis=None):
+        return xp.argmax(x, axis=axis)
+
+
+class ArgMin(_IndexSelect):
+    def fwd(self, x: NdArray, xp, axis=None):
+        return xp.argmin(x, axis=axis)
+
+
 class Reshape(Function):
     def forward(self, x: NdArray, shape: Tuple) -> NdArray:
         self.save_for_backward(x.shape)
@@ -483,6 +510,5 @@ class Transpose(Function):
         axes, = self.saved_tensors
         if axes is None:
             return grad.transpose()
-        xp = get_array_module(grad)
 
-        return grad.transpose(tuple(xp.argsort(axes))), None
+        return grad.transpose(tuple(np.argsort(axes))), None

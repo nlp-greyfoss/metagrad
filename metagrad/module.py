@@ -322,6 +322,11 @@ class Linear(Module):
 
         return x
 
+    def extra_repr(self) -> str:
+        return 'in_features={}, out_features={}, bias={}'.format(
+            self.in_features, self.out_features, self.bias is not None
+        )
+
 
 class Embedding(Module):
     def __init__(self, num_embeddings: int, embedding_dim: int, _weight: Optional[Tensor] = None,
@@ -519,6 +524,7 @@ class Dropout(Module):
 class RNNCell(Module):
     def __init__(self, input_size, hidden_size: int, bias: bool = True, nonlinearity: str = 'tanh') -> None:
         '''
+        RNN单时间步的抽象
 
         :param input_size: 输入x的特征数
         :param hidden_size: 隐藏状态的特征数
@@ -532,9 +538,9 @@ class RNNCell(Module):
         self.hidden_trans = Linear(hidden_size, hidden_size, bias=bias)
 
         if nonlinearity == 'tanh':
-            self.activate_func = F.tanh
+            self.activation = F.tanh
         else:
-            self.activate_func = F.relu
+            self.activation = F.relu
 
     def forward(self, x: Tensor, h: Tensor) -> Tensor:
         '''
@@ -545,17 +551,19 @@ class RNNCell(Module):
         '''
         # [batch_size, input_size] x [input_size, hidden_size] + [batch_size, hidden_size] x [hidden_size, hidden_size]
         # = [batch_size, hidden_size]
-        h_next = self.activate_func(self.input_trans(x) + self.hidden_trans(h))
+        h_next = self.activation(self.input_trans(x) + self.hidden_trans(h))
         return h_next
 
 
 class RNN(Module):
-    def __init__(self, input_size: int, hidden_size: int, num_layers: int = 1, nonlinearity: str = 'tanh',
+    def __init__(self, input_size: int, hidden_size: int, batch_first: bool = False, num_layers: int = 1,
+                 nonlinearity: str = 'tanh',
                  bias: bool = True, dropout: float = 0) -> None:
         '''
 
         :param input_size:  输入x的特征数
         :param hidden_size: 隐藏状态的特征数
+        :param batch_first:
         :param num_layers: 层数
         :param nonlinearity: 非线性激活函数 tanh | relu
         :param bias: 线性层是否包含偏置
@@ -564,9 +572,10 @@ class RNN(Module):
         super(RNN, self).__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
+        self.batch_first = batch_first
         # 支持多层
         self.cells = ModuleList([RNNCell(input_size, hidden_size, bias, nonlinearity)] +
-                                [RNNCell(hidden_size, hidden_size) for _ in range(num_layers - 1)])
+                                [RNNCell(hidden_size, hidden_size, bias, nonlinearity) for _ in range(num_layers - 1)])
         self.dropout = dropout
         if dropout:
             # Dropout层
@@ -575,19 +584,34 @@ class RNN(Module):
     def forward(self, input: Tensor, h_0: Tensor) -> Tuple[Tensor, Tensor]:
         '''
         RNN的前向传播
-        :param input: 形状 [n_steps, batch_size, input_size]
+        :param input: 形状 [n_steps, batch_size, input_size] 若batch_first=False
         :param h_0: 形状 [num_layers, batch_size, hidden_size]
         :return:
+            output: (n_steps, batch_size, hidden_size)若batch_first=False 或
+                    (batch_size, n_steps, hidden_size)若batch_first=True
+            h_n: (num_layers, batch_size, hidden_size)
         '''
-        n_steps, batch_size = input.shape[:2]
+
+        is_batched = input.ndim == 3
+        batch_dim = 0 if self.batch_first else 1
+        if not is_batched:
+            # 转换为批大小为1的输入
+            input = input.unsqueeze(batch_dim)
+            if h_0 is not None:
+                h_0 = h_0.unsqueeze(1)
+        if self.batch_first:
+            batch_size, n_steps, _ = input.shape
+            input = input.transpose((1, 0, 2))  # 将batch放到中间维度
+        else:
+            n_steps, batch_size, _ = input.shape
 
         if h_0 is None:
-            h = [input.zeros((batch_size, self.hidden_size)) for _ in range(self.n_layers)]
+            h = [Tensor.zeros((batch_size, self.hidden_size), device=input.device) for _ in range(self.num_layers)]
         else:
             h = h_0
             h = list(F.unbind(h))  # 按层数拆分h
 
-        out = []
+        output = []
         for t in range(n_steps):
             inp = input[t]
 
@@ -598,12 +622,14 @@ class RNN(Module):
                     inp = self.dropout_layer(inp)
 
             # 收集最终层的输出
-            out.append(h[-1])
+            output.append(h[-1])
 
-        out = F.stack(out)
-        h = F.stack(h)
+        output = F.stack(output)
+        if self.batch_first:
+            output = output.transpose((1, 0, 2))
+        h_n = F.stack(h)
 
-        return out, h
+        return output, h_n
 
 
 class LSTMCell(Module):
