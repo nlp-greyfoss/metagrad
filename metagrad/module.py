@@ -1,5 +1,6 @@
 import operator
 import pickle
+import copy
 from collections import OrderedDict
 from itertools import chain, islice
 from typing import List, Optional, Tuple, Dict, Iterable, Union, Iterator, Set
@@ -557,7 +558,7 @@ class RNNCell(Module):
 
 class RNN(Module):
     def __init__(self, input_size: int, hidden_size: int, batch_first: bool = False, num_layers: int = 1,
-                 nonlinearity: str = 'tanh',
+                 nonlinearity: str = 'tanh', bidirectional: bool = False,
                  bias: bool = True, dropout: float = 0) -> None:
         '''
 
@@ -566,6 +567,7 @@ class RNN(Module):
         :param batch_first:
         :param num_layers: 层数
         :param nonlinearity: 非线性激活函数 tanh | relu
+        :param bidirectional: 是否为双向
         :param bias: 线性层是否包含偏置
         :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
         '''
@@ -573,9 +575,15 @@ class RNN(Module):
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.batch_first = batch_first
+        self.bidirectional = bidirectional
+
         # 支持多层
         self.cells = ModuleList([RNNCell(input_size, hidden_size, bias, nonlinearity)] +
                                 [RNNCell(hidden_size, hidden_size, bias, nonlinearity) for _ in range(num_layers - 1)])
+        if self.bidirectional:
+            # 支持双向
+            self.back_cells = copy.deepcopy(self.cells)
+
         self.dropout = dropout
         if dropout:
             # Dropout层
@@ -587,9 +595,12 @@ class RNN(Module):
         :param input: 形状 [n_steps, batch_size, input_size] 若batch_first=False
         :param h_0: 形状 [num_layers, batch_size, hidden_size]
         :return:
-            output: (n_steps, batch_size, hidden_size)若batch_first=False 或
-                    (batch_size, n_steps, hidden_size)若batch_first=True
-            h_n: (num_layers, batch_size, hidden_size)
+            num_directions = 2 if self.bidirectional else 1
+
+            output: (n_steps, batch_size, num_directions * hidden_size)若batch_first=False 或
+                    (batch_size, n_steps, num_directions * hidden_size)若batch_first=True
+                    包含每个时间步最后一层(多层RNN)的输出h_t
+            h_n: (num_directions * num_layers, batch_size, hidden_size) 包含最终隐藏状态
         '''
 
         is_batched = input.ndim == 3
@@ -606,30 +617,71 @@ class RNN(Module):
             n_steps, batch_size, _ = input.shape
 
         if h_0 is None:
-            h = [Tensor.zeros((batch_size, self.hidden_size), device=input.device) for _ in range(self.num_layers)]
+            num_directions = 2 if self.bidirectional else 1
+            h = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
+                             device=input.device)
         else:
             h = h_0
-            h = list(F.unbind(h))  # 按层数拆分h
 
-        output = []
-        for t in range(n_steps):
-            inp = input[t]
+        hs = list(F.unbind(h))  # 按层数拆分h
 
-            for layer in range(self.num_layers):
-                h[layer] = self.cells[layer](inp, h[layer])
-                inp = h[layer]
-                if self.dropout and layer != self.num_layers - 1:
-                    inp = self.dropout_layer(inp)
+        if not self.bidirectional:
+            # 如果是单向的
+            output, h_n = one_directional_op(input, self.cells, n_steps, hs, self.num_layers, self.dropout_layer,
+                                             self.batch_first)
+        else:
+            output_f, h_n_f = one_directional_op(input, self.cells, n_steps, hs[:self.num_layers], self.num_layers,
+                                                 self.dropout_layer, self.batch_first)
 
-            # 收集最终层的输出
-            output.append(h[-1])
+            output_b, h_n_b = one_directional_op(F.flip(input, 0), self.back_cells, n_steps, hs[self.num_layers:],
+                                                 self.num_layers, self.dropout_layer, self.batch_first)
 
-        output = F.stack(output)
-        if self.batch_first:
-            output = output.transpose((1, 0, 2))
-        h_n = F.stack(h)
+            output = F.cat([output_f, output_b], 2)
+            h_n = F.cat([h_n_f, h_n_b], 0)
 
         return output, h_n
+
+
+def one_directional_op(input, cells, n_steps, hs, num_layers, dropout, batch_first, reverse=False):
+    '''
+    单向RNN运算
+    Args:
+        input:  [n_steps, batch_size, input_size]
+        cells:
+        n_steps:
+        hs:
+        num_layers:
+        dropout:
+        batch_first:
+        reverse:
+
+    Returns:
+
+    '''
+    output = []
+    for t in range(n_steps):
+        inp = input[t]
+
+        for layer in range(num_layers):
+            hs[layer] = cells[layer](inp, hs[layer])
+            inp = hs[layer]
+            if dropout and layer != num_layers - 1:
+                inp = dropout(inp)
+
+        # 收集最终层的输出
+        output.append(hs[-1])
+
+    output = F.stack(output)
+
+    if reverse:
+        output = F.flip(output, 0)
+
+    if batch_first:
+        output = output.transpose((1, 0, 2))
+
+    h_n = F.stack(hs)
+
+    return output, h_n
 
 
 class LSTMCell(Module):

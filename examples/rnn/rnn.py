@@ -36,15 +36,18 @@ class RNNDataset(Dataset):
 
 class RNN(nn.Module):
     def __init__(self, vocab_size: int, embedding_dim: int, hidden_dim: int, output_dim: int, n_layers: int,
-                 dropout: float):
+                 dropout: float, bidirectional: bool = False):
         super(RNN, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout)
-        self.output = nn.Linear(hidden_dim, output_dim)
+        self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
+                          bidirectional=bidirectional)
+
+        num_directions = 2 if bidirectional else 1
+        self.output = nn.Linear(num_directions * hidden_dim, output_dim)
 
     def forward(self, input: Tensor, hidden: Tensor = None) -> Tensor:
         embeded = self.embedding(input)
-        output, _ = self.rnn(embeded, hidden)
+        output, _ = self.rnn(embeded, hidden)  # pos tag任务利用的是包含所有时间步的output
         outputs = self.output(output)
         log_probs = F.log_softmax(outputs, axis=-1)
         return log_probs
@@ -67,9 +70,9 @@ def load_treebank():
 
 
 embedding_dim = 128
-hidden_dim = 256
+hidden_dim = 128
 batch_size = 32
-num_epoch = 100
+num_epoch = 10
 n_layers = 2
 dropout = 0.2
 
@@ -84,20 +87,20 @@ num_class = len(pos_vocab)
 
 # 加载模型
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
-model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout)
+model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=True)
 model.to(device)
 
 # 训练过程
 nll_loss = NLLLoss()
 optimizer = SGD(model.parameters(), lr=0.1)
 
-model.train()
+model.train()  # 确保应用了dropout
 for epoch in range(num_epoch):
     total_loss = 0
     for batch in tqdm(train_data_loader, desc=f"Training Epoch {epoch}"):
         inputs, targets, mask = [x.to(device) for x in batch]
         log_probs = model(inputs)
-        loss = nll_loss(log_probs[mask], targets[mask])
+        loss = nll_loss(log_probs[mask], targets[mask])  # 通过bool选择，mask部分不需要计算
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()

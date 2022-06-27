@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, Optional
 
 import numpy as np
 
@@ -304,6 +304,21 @@ class Chunk(Function):
 
 def chunk(input: Tensor, chunks: int, axis=0):
     return Chunk()(input, chunks=chunks, axis=axis)
+
+
+class Flip(Function):
+    def forward(self, inputs: NdArray, axis: Union[int, Tuple] = None) -> NdArray:
+        xp = get_array_module(inputs)
+        self.save_for_backward(axis, xp)
+        return xp.flip(inputs, axis=axis)
+
+    def backward(self, grad: NdArray) -> NdArray:
+        axis, xp = self.saved_tensors
+        return xp.flip(grad, axis=axis)
+
+
+def flip(x: Tensor, axis: Union[int, Tuple] = None):
+    return Flip()(x, axis=axis)
 
 
 # 简单的norm实现
