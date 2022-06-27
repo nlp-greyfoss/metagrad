@@ -1,6 +1,6 @@
+import copy
 import operator
 import pickle
-import copy
 from collections import OrderedDict
 from itertools import chain, islice
 from typing import List, Optional, Tuple, Dict, Iterable, Union, Iterator, Set
@@ -634,7 +634,7 @@ class RNN(Module):
                                                  self.dropout_layer, self.batch_first)
 
             output_b, h_n_b = one_directional_op(F.flip(input, 0), self.back_cells, n_steps, hs[self.num_layers:],
-                                                 self.num_layers, self.dropout_layer, self.batch_first)
+                                                 self.num_layers, self.dropout_layer, self.batch_first, reverse=True)
 
             output = F.cat([output_f, output_b], 2)
             h_n = F.cat([h_n_f, h_n_b], 0)
@@ -671,10 +671,10 @@ def one_directional_op(input, cells, n_steps, hs, num_layers, dropout, batch_fir
         # 收集最终层的输出
         output.append(hs[-1])
 
-    output = F.stack(output)
+    output = F.stack(output)  # (n_steps, batch_size, num_directions * hidden_size)
 
     if reverse:
-        output = F.flip(output, 0)
+        output = F.flip(output, 0)  # 将输出时间步维度逆序，使得时间步t=0上，是看了整个序列的结果。
 
     if batch_first:
         output = output.transpose((1, 0, 2))
