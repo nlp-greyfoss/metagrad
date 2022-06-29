@@ -72,7 +72,7 @@ def load_treebank():
 embedding_dim = 128
 hidden_dim = 128
 batch_size = 32
-num_epoch = 10
+num_epoch = 100
 n_layers = 2
 dropout = 0.2
 

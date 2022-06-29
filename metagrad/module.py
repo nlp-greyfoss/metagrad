@@ -331,7 +331,7 @@ class Linear(Module):
 
 class Embedding(Module):
     def __init__(self, num_embeddings: int, embedding_dim: int, _weight: Optional[Tensor] = None,
-                 dtype=None, device=None) -> None:
+                 dtype=None, device=None, padding_idx: Optional[int] = None) -> None:
         '''
         一个存储固定大小词汇表嵌入的查找表，可以通过索引(列表)直接访问，而不是one-hot向量。
         :param num_embeddings: 词汇表大小
@@ -341,6 +341,7 @@ class Embedding(Module):
         super(Embedding, self).__init__()
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
+        self.padding_idx = padding_idx
 
         # 也可以传预训练好的权重进来
         if _weight is None:
@@ -353,16 +354,22 @@ class Embedding(Module):
 
     def reset_parameters(self) -> None:
         init.uniform_(self.weight)
+        self._fill_padding_idx_with_zero()
+
+    def _fill_padding_idx_with_zero(self) -> None:
+        if self.padding_idx is not None:
+            with no_grad():
+                self.weight[self.padding_idx] = 0
 
     def forward(self, input: Tensor) -> Tensor:
         return F.embedding(self.weight, input)
 
     @classmethod
-    def from_pretrained(cls, embeddings: Tensor, freeze=True):
+    def from_pretrained(cls, embeddings: Tensor, freeze=True, padding_idx=None):
         assert embeddings.ndim == 2, \
             'Embeddings parameter is expected to be 2-dimensional'
         rows, cols = embeddings.shape
-        embedding = cls(num_embeddings=rows, embedding_dim=cols, _weight=embeddings)
+        embedding = cls(num_embeddings=rows, embedding_dim=cols, _weight=embeddings, padding_idx=padding_idx)
         embedding.weight.requires_grad = not freeze
         return embedding
 
@@ -627,14 +634,14 @@ class RNN(Module):
 
         if not self.bidirectional:
             # 如果是单向的
-            output, h_n = one_directional_op(input, self.cells, n_steps, hs, self.num_layers, self.dropout_layer,
-                                             self.batch_first)
+            output, h_n = _one_directional_op(input, self.cells, n_steps, hs, self.num_layers, self.dropout_layer,
+                                              self.batch_first)
         else:
-            output_f, h_n_f = one_directional_op(input, self.cells, n_steps, hs[:self.num_layers], self.num_layers,
-                                                 self.dropout_layer, self.batch_first)
+            output_f, h_n_f = _one_directional_op(input, self.cells, n_steps, hs[:self.num_layers], self.num_layers,
+                                                  self.dropout_layer, self.batch_first)
 
-            output_b, h_n_b = one_directional_op(F.flip(input, 0), self.back_cells, n_steps, hs[self.num_layers:],
-                                                 self.num_layers, self.dropout_layer, self.batch_first, reverse=True)
+            output_b, h_n_b = _one_directional_op(F.flip(input, 0), self.back_cells, n_steps, hs[self.num_layers:],
+                                                  self.num_layers, self.dropout_layer, self.batch_first, reverse=True)
 
             output = F.cat([output_f, output_b], 2)
             h_n = F.cat([h_n_f, h_n_b], 0)
@@ -642,7 +649,7 @@ class RNN(Module):
         return output, h_n
 
 
-def one_directional_op(input, cells, n_steps, hs, num_layers, dropout, batch_first, reverse=False):
+def _one_directional_op(input, cells, n_steps, hs, num_layers, dropout, batch_first, reverse=False):
     '''
     单向RNN运算
     Args:
@@ -685,17 +692,21 @@ def one_directional_op(input, cells, n_steps, hs, num_layers, dropout, batch_fir
 
 
 class LSTMCell(Module):
-    def __init__(self, input_size: int, hidden_size: int):
+    def __init__(self, input_size, hidden_size: int, bias: bool = True) -> None:
         super(LSTMCell, self).__init__()
         # 组合了 x->input gate; x-> forget gate; x-> g ; x-> output gate 的线性转换
-        self.hidden_lin = Linear(hidden_size, 4 * hidden_size)
+        self.input_trans = Linear(hidden_size, 4 * hidden_size, bias=bias)
         # 组合了 h->input gate; h-> forget gate; h-> g ; h-> output gate 的线性转换
-        self.input_lin = Linear(input_size, 4 * hidden_size, bias=False)
+        self.hidden_trans = Linear(input_size, 4 * hidden_size, bias=bias)
 
     def forward(self, x: Tensor, h: Tensor, c: Tensor) -> Tuple[Tensor, Tensor]:
-        ifgo = self.hidden_lin(h) + self.input_lin(x)
+        # i: input gate
+        # f: forget gate
+        # o: output gate
+        # g: g_t
+        ifgo = self.input_trans(h) + self.hidden_trans(x)
         ifgo = F.chunk(ifgo, 4, -1)
-        # 一次性计算这四个门
+        # 一次性计算三个门 与 g_t
         i, f, g, o = ifgo
 
         c_next = F.sigmoid(f) * c + F.sigmoid(i) * F.tanh(g)
@@ -706,13 +717,26 @@ class LSTMCell(Module):
 
 
 class LSTM(Module):
-    def __init__(self, input_size: int, hidden_size: int, n_layers: int = 1):
+    def __init__(self, input_size: int, hidden_size: int, batch_first: bool = False, num_layers: int = 1,
+                 bidirectional: bool = False, dropout: float = 0):
         super(LSTM, self).__init__()
-        self.n_layers = n_layers
+        self.num_layers = num_layers
         self.hidden_size = hidden_size
+        self.batch_first = batch_first
+        self.bidirectional = bidirectional
+
         # 支持多层
         self.cells = ModuleList([LSTMCell(input_size, hidden_size)] +
-                                [LSTMCell(hidden_size, hidden_size) for _ in range(n_layers - 1)])
+                                [LSTMCell(hidden_size, hidden_size) for _ in range(num_layers - 1)])
+
+        if self.bidirectional:
+            # 支持双向
+            self.back_cells = copy.deepcopy(self.cells)
+
+        self.dropout = dropout
+        if dropout:
+            # Dropout层
+            self.dropout_layer = Dropout(dropout)
 
     def forward(self, x: Tensor, state: Optional[Tuple[Tensor, Tensor]] = None):
         '''
