@@ -738,32 +738,62 @@ class LSTM(Module):
             # Dropout层
             self.dropout_layer = Dropout(dropout)
 
-    def forward(self, x: Tensor, state: Optional[Tuple[Tensor, Tensor]] = None):
+    def forward(self, input: Tensor, state: Optional[Tuple[Tensor, Tensor]] = None):
         '''
 
         Args:
-            x: 形状 [n_steps, batch_size, input_size]
-            state: 元组(h,c) 每个形状[batch_size, hidden_size]
+            input: 形状 [n_steps, batch_size, input_size] 若batch_first=False ；否则形状 [batch_size, n_steps, input_size]
+            state: 元组(h,c)
+
+            num_directions = 2 if self.bidirectional else 1
+
+            h: [num_directions * num_layers, batch_size, hidden_size]
+            c: [num_directions * num_layers, batch_size, hidden_size]
 
         Returns:
+            num_directions = 2 if self.bidirectional else 1
 
+            output: (n_steps, batch_size, num_directions * hidden_size)若batch_first=False 或
+                    (batch_size, n_steps, num_directions * hidden_size)若batch_first=True
+                    包含每个时间步最后一层(多层RNN)的输出h_t
+            h_n: (num_directions * num_layers, batch_size, hidden_size) 包含最终隐藏状态
+            c_n: (num_directions * num_layers, batch_size, hidden_size) 包含最终隐藏状态
         '''
-        n_steps, batch_size = x.shape[:2]
+
+        h_0, c_0 = None, None
+        if state is not None:
+            h_0, c_0 = state
+
+        is_batched = input.ndim == 3
+        batch_dim = 0 if self.batch_first else 1
+        if not is_batched:
+            # 转换为批大小为1的输入
+            input = input.unsqueeze(batch_dim)
+            if state is not None:
+                h_0 = h_0.unsqueeze(1)
+                c_0 = c_0.unsqueeze(1)
+
+        if self.batch_first:
+            batch_size, n_steps, _ = input.shape
+            input = input.transpose((1, 0, 2))  # 将batch放到中间维度
+        else:
+            n_steps, batch_size, _ = input.shape
 
         if state is None:
-            # 初始化
-            h = [x.zeros((batch_size, self.hidden_size)) for _ in range(self.n_layers)]
-            c = [x.zeros((batch_size, self.hidden_size)) for _ in range(self.n_layers)]
-        else:
-            h, c = state
-            # 得到每层的状态
-            h, c = list(F.split(h)), list(F.split(c))
+            num_directions = 2 if self.bidirectional else 1
+            h_0 = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
+                               device=input.device)
+            c_0 = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
+                               device=input.device)
+
+        # 得到每层的状态
+        h, c = list(F.split(h_0)), list(F.split(c_0))
 
         out = []
         for t in range(n_steps):
-            inp = x[t]
+            inp = input[t]
 
-            for layer in range(self.n_layers):
+            for layer in range(self.num_layers):
                 h[layer], c[layer] = self.cells[layer](inp, h[layer], c[layer])
                 inp = h[layer]
             # 收集最终层的输出
@@ -772,5 +802,8 @@ class LSTM(Module):
         out = F.stack(out)
         h = F.stack(h)
         c = F.stack(c)
+
+        if self.batch_first:
+            out = out.transpose((1, 0, 2))
 
         return out, (h, c)
