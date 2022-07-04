@@ -1,100 +1,82 @@
-import metagrad.module as nn
-from metagrad.tensor import Tensor, no_grad
+from tqdm.auto import tqdm
+
 import metagrad.functions as F
+import metagrad.module as nn
+from examples.rnn.rnn import load_treebank, RNNDataset
+from metagrad import Tensor, cuda
+from metagrad.dataloader import DataLoader
 from metagrad.loss import NLLLoss
 from metagrad.optim import SGD
+from metagrad.tensor import no_grad
 
 
-def prepare_sequence(seq, to_ix):
-    idxs = [to_ix[w] for w in seq]
-    return Tensor(idxs)
+class LSTM(nn.Module):
+    def __init__(self, vocab_size: int, embedding_dim: int, hidden_dim: int, output_dim: int, n_layers: int,
+                 dropout: float, bidirectional: bool = False):
+        super(LSTM, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.rnn = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
+                           bidirectional=bidirectional)
+
+        num_directions = 2 if bidirectional else 1
+        self.output = nn.Linear(num_directions * hidden_dim, output_dim)
+
+    def forward(self, input: Tensor, hidden: Tensor = None) -> Tensor:
+        embeded = self.embedding(input)
+        output, _ = self.rnn(embeded, hidden)  # pos tag任务利用的是包含所有时间步的output
+        outputs = self.output(output)
+        log_probs = F.log_softmax(outputs, axis=-1)
+        return log_probs
 
 
-class LSTMTagger(nn.Module):
+embedding_dim = 128
+hidden_dim = 128
+batch_size = 32
+num_epoch = 10
+n_layers = 2
+dropout = 0.2
 
-    def __init__(self, embedding_dim, hidden_dim, vocab_size, tagset_size):
-        super(LSTMTagger, self).__init__()
-        self.hidden_dim = hidden_dim
+# 加载数据
+train_data, test_data, vocab, pos_vocab = load_treebank()
+train_dataset = RNNDataset(train_data)
+test_dataset = RNNDataset(test_data)
+train_data_loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=train_dataset.collate_fn, shuffle=True)
+test_data_loader = DataLoader(test_dataset, batch_size=batch_size, collate_fn=test_dataset.collate_fn, shuffle=False)
 
-        self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
+num_class = len(pos_vocab)
 
-        # The LSTM takes word embeddings as inputs, and outputs hidden states
-        # with dimensionality hidden_dim.
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim)
+# 加载模型
+device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
+model = LSTM(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=True)
+model.to(device)
 
-        # The linear layer that maps from hidden state space to tag space
-        self.hidden2tag = nn.Linear(hidden_dim, tagset_size)
+# 训练过程
+nll_loss = NLLLoss()
+optimizer = SGD(model.parameters(), lr=0.1)
 
-    def forward(self, sentence):
-        embeds = self.word_embeddings(sentence)
-        lstm_out, _ = self.lstm(embeds.reshape((len(sentence), 1, -1)))
-        tag_space = self.hidden2tag(lstm_out.reshape((len(sentence), -1)))
-        tag_scores = F.log_softmax(tag_space, axis=1)
-        return tag_scores
+model.train()  # 确保应用了dropout
+for epoch in range(num_epoch):
+    total_loss = 0
+    for batch in tqdm(train_data_loader, desc=f"Training Epoch {epoch}"):
+        inputs, targets, mask = [x.to(device) for x in batch]
+        log_probs = model(inputs)
+        loss = nll_loss(log_probs[mask], targets[mask])  # 通过bool选择，mask部分不需要计算
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    print(f"Loss: {total_loss:.2f}")
 
-
-if __name__ == '__main__':
-    training_data = [
-        # Tags are: DET - determiner; NN - noun; V - verb
-        # For example, the word "The" is a determiner
-        ("The dog ate the apple".split(), ["DET", "NN", "V", "DET", "NN"]),
-        ("Everybody read that book".split(), ["NN", "V", "DET", "NN"])
-    ]
-    word_to_ix = {}
-    # For each words-list (sentence) and tags-list in each tuple of training_data
-    for sent, tags in training_data:
-        for word in sent:
-            if word not in word_to_ix:  # word has not been assigned an index yet
-                word_to_ix[word] = len(word_to_ix)  # Assign each word with a unique index
-    print(word_to_ix)
-    tag_to_ix = {"DET": 0, "NN": 1, "V": 2}  # Assign each tag with a unique index
-
-    # These will usually be more like 32 or 64 dimensional.
-    # We will keep them small, so we can see how the weights change as we train.
-    EMBEDDING_DIM = 6
-    HIDDEN_DIM = 6
-
-    model = LSTMTagger(EMBEDDING_DIM, HIDDEN_DIM, len(word_to_ix), len(tag_to_ix))
-    loss_function = NLLLoss()
-    optimizer = SGD(model.parameters(), lr=0.1)
-
-    # See what the scores are before training
-    # Note that element i,j of the output is the score for tag j for word i.
-    # Here we don't need to train, so the code is wrapped in torch.no_grad()
+# 测试过程
+acc = 0
+total = 0
+model.eval()  # 不需要dropout
+for batch in tqdm(test_data_loader, desc=f"Testing"):
+    inputs, targets, mask = [x.to(device) for x in batch]
     with no_grad():
-        inputs = prepare_sequence(training_data[0][0], word_to_ix)
-        tag_scores = model(inputs)
-        print(tag_scores)
+        output = model(inputs)
+        acc += (output.argmax(axis=-1).data == targets.data)[mask.data].sum().item()
+        total += mask.sum().item()
 
-    for epoch in range(300):  # again, normally you would NOT do 300 epochs, it is toy data
-        for sentence, tags in training_data:
-            # Step 1. Remember that Pytorch accumulates gradients.
-            # We need to clear them out before each instance
-            model.zero_grad()
-
-            # Step 2. Get our inputs ready for the network, that is, turn them into
-            # Tensors of word indices.
-            sentence_in = prepare_sequence(sentence, word_to_ix)
-            targets = prepare_sequence(tags, tag_to_ix)
-
-            # Step 3. Run our forward pass.
-            tag_scores = model(sentence_in)
-
-            # Step 4. Compute the loss, gradients, and update the parameters by
-            #  calling optimizer.step()
-            loss = loss_function(tag_scores, targets)
-            loss.backward()
-            optimizer.step()
-
-    # See what the scores are after training
-    with no_grad():
-        inputs = prepare_sequence(training_data[0][0], word_to_ix)
-        tag_scores = model(inputs)
-
-        # The sentence is "the dog ate the apple".  i,j corresponds to score for tag j
-        # for word i. The predicted tag is the maximum scoring tag.
-        # Here, we can see the predicted sequence below is 0 1 2 0 1
-        # since 0 is index of the maximum value of row 1,
-        # 1 is the index of maximum value of row 2, etc.
-        # Which is DET NOUN VERB DET NOUN, the correct sequence!
-        print(tag_scores)
+# 输出在测试集上的准确率
+print(f"Acc: {acc / total:.2f}")

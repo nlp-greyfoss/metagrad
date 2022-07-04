@@ -39,7 +39,7 @@ class RNN(nn.Module):
                  dropout: float, bidirectional: bool = False):
         super(RNN, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.rnn = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
+        self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
                           bidirectional=bidirectional)
 
         num_directions = 2 if bidirectional else 1
@@ -73,8 +73,8 @@ embedding_dim = 128
 hidden_dim = 128
 batch_size = 32
 num_epoch = 10
-n_layers = 1
-dropout = 0
+n_layers = 2
+dropout = 0.2
 
 # 加载数据
 train_data, test_data, vocab, pos_vocab = load_treebank()
@@ -87,7 +87,7 @@ num_class = len(pos_vocab)
 
 # 加载模型
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
-model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=False)
+model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=True)
 model.to(device)
 
 # 训练过程
