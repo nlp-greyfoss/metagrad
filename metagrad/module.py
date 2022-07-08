@@ -839,3 +839,140 @@ class LSTM(Module):
             c_n = F.cat([c_n_f, c_n_b], 0)
 
         return output, (h_n, c_n)
+
+
+class GRUCell(Module):
+    def __init__(self, input_size, hidden_size: int, bias: bool = False) -> None:
+        super(GRUCell, self).__init__()
+        # 组合了 x->reset gate; x->update gate; x->g 的线性转换
+        self.input_trans = Linear(hidden_size, 3 * hidden_size, bias=bias)
+        # 组合了 h->reset gate; h->update gate; h->g 的线性转换
+        self.hidden_trans = Linear(input_size, 3 * hidden_size, bias=bias)
+
+    def forward(self, x: Tensor, h: Tensor) -> Tensor:
+        # r: rest gate
+        # z: output gate
+        # g: g_t
+        input_trans = self.input_trans(x)
+        hidden_trans = self.hidden_trans(h)
+
+        i_r, i_z, i_g = F.chunk(input_trans, 3, -1)
+        h_r, h_z, h_g = F.chunk(hidden_trans, 3, -1)
+
+        r = F.sigmoid(i_r + h_r)  # 重置门
+        z = F.sigmoid(i_z + h_z)  # 更新门
+
+        h_next = z * h + (1 - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
+
+        return h_next
+
+
+class GRU(Module):
+    def __init__(self, input_size: int, hidden_size: int, batch_first: bool = False, num_layers: int = 1,
+                 bidirectional: bool = False, dropout: float = 0):
+        super(GRU, self).__init__()
+        self.num_layers = num_layers
+        self.hidden_size = hidden_size
+        self.batch_first = batch_first
+        self.bidirectional = bidirectional
+
+        # 支持多层
+        self.cells = ModuleList([GRUCell(input_size, hidden_size)] +
+                                [GRUCell(hidden_size, hidden_size) for _ in range(num_layers - 1)])
+
+        if self.bidirectional:
+            # 支持双向
+            self.back_cells = copy.deepcopy(self.cells)
+
+        self.dropout = dropout
+        if dropout:
+            # Dropout层
+            self.dropout_layer = Dropout(dropout)
+
+    def _one_directional_op(self, input, cells, n_steps, hs, reverse=False):
+        '''
+
+        Args:
+            input: 输入 [n_steps, batch_size, input_size]
+            cells: 正向或反向RNNCell的ModuleList
+            hs:
+            n_steps: 步长
+            reverse: true 反向
+
+        Returns:
+
+        '''
+        output = []
+        for t in range(n_steps):
+            inp = input[t]
+
+            for layer in range(self.num_layers):
+                hs[layer] = cells[layer](inp, hs[layer])
+                inp = hs[layer]
+                if self.dropout and layer != self.num_layers - 1:
+                    inp = self.dropout_layer(inp)
+
+            # 收集最终层的输出
+            output.append(hs[-1])
+
+        output = F.stack(output)  # (n_steps, batch_size, num_directions * hidden_size)
+
+        if reverse:
+            output = F.flip(output, 0)  # 将输出时间步维度逆序，使得时间步t=0上，是看了整个序列的结果。
+
+        if self.batch_first:
+            output = output.transpose((1, 0, 2))
+
+        h_n = F.stack(hs)
+
+        return output, h_n
+
+    def forward(self, input: Tensor, h_0: Tensor) -> Tuple[Tensor, Tensor]:
+        '''
+        RNN的前向传播
+        :param input: 形状 [n_steps, batch_size, input_size] 若batch_first=False
+        :param h_0: 形状 [num_layers, batch_size, hidden_size]
+        :return:
+            num_directions = 2 if self.bidirectional else 1
+
+            output: (n_steps, batch_size, num_directions * hidden_size)若batch_first=False 或
+                    (batch_size, n_steps, num_directions * hidden_size)若batch_first=True
+                    包含每个时间步最后一层(多层RNN)的输出h_t
+            h_n: (num_directions * num_layers, batch_size, hidden_size) 包含最终隐藏状态
+        '''
+
+        is_batched = input.ndim == 3
+        batch_dim = 0 if self.batch_first else 1
+        if not is_batched:
+            # 转换为批大小为1的输入
+            input = input.unsqueeze(batch_dim)
+            if h_0 is not None:
+                h_0 = h_0.unsqueeze(1)
+        if self.batch_first:
+            batch_size, n_steps, _ = input.shape
+            input = input.transpose((1, 0, 2))  # 将batch放到中间维度
+        else:
+            n_steps, batch_size, _ = input.shape
+
+        if h_0 is None:
+            num_directions = 2 if self.bidirectional else 1
+            h = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
+                             device=input.device)
+        else:
+            h = h_0
+
+        hs = list(F.unbind(h))  # 按层数拆分h
+
+        if not self.bidirectional:
+            # 如果是单向的
+            output, h_n = self._one_directional_op(input, self.cells, n_steps, hs)
+        else:
+            output_f, h_n_f = self._one_directional_op(input, self.cells, n_steps, hs[:self.num_layers])
+
+            output_b, h_n_b = self._one_directional_op(F.flip(input, 0), self.back_cells, n_steps, hs[self.num_layers:],
+                                                       reverse=True)
+
+            output = F.cat([output_f, output_b], 2)
+            h_n = F.cat([h_n_f, h_n_b], 0)
+
+        return output, h_n
