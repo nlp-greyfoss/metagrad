@@ -1,4 +1,5 @@
 import copy
+import math
 import operator
 import pickle
 from collections import OrderedDict
@@ -529,21 +530,49 @@ class Dropout(Module):
         return f'p={self.p}'
 
 
-class RNNCell(Module):
-    def __init__(self, input_size, hidden_size: int, bias: bool = True, nonlinearity: str = 'tanh') -> None:
+class RNNCellBase(Module):
+    def reset_parameters(self) -> None:
+        stdv = 1.0 / math.sqrt(self.hidden_size) if self.hidden_size > 0 else 0
+        for weight in self.parameters():
+            init.uniform_(weight, -stdv, stdv)
+
+    def __init__(self, input_size, hidden_size: int, num_chunks: int, bias: bool = True, device=None,
+                 dtype=None) -> None:
         '''
         RNN单时间步的抽象
-
         :param input_size: 输入x的特征数
         :param hidden_size: 隐藏状态的特征数
         :param bias: 线性层是否包含偏置
-        :param nonlinearity: 非线性激活函数 tanh | relu
+        :param nonlinearity: 非线性激活函数 tanh | relu (mode = RNN)
         '''
-        super(RNNCell, self).__init__()
+        factory_kwargs = {'device': device, 'dtype': dtype}
+
+        super(RNNCellBase, self).__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+
         # 输入x的线性变换
-        self.input_trans = Linear(input_size, hidden_size, bias=bias)
+        self.input_trans = Linear(input_size, num_chunks * hidden_size, bias=bias, **factory_kwargs)
         # 隐藏状态的线性变换
-        self.hidden_trans = Linear(hidden_size, hidden_size, bias=bias)
+        self.hidden_trans = Linear(hidden_size, num_chunks * hidden_size, bias=bias, **factory_kwargs)
+
+        # self.reset_parameters()
+
+    def extra_repr(self) -> str:
+        s = 'input_size={input_size}, hidden_size={hidden_size}'
+        if 'bias' in self.__dict__ and self.bias is not True:
+            s += ', bias={bias}'
+        if 'nonlinearity' in self.__dict__ and self.nonlinearity != "tanh":
+            s += ', nonlinearity={nonlinearity}'
+        return s.format(**self.__dict__)
+
+
+class RNNCell(RNNCellBase):
+    def __init__(self, input_size, hidden_size: int, bias: bool = True, nonlinearity: str = 'tanh', device=None,
+                 dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(RNNCell, self).__init__(input_size, hidden_size, num_chunks=1, bias=bias, **factory_kwargs)
 
         if nonlinearity == 'tanh':
             self.activation = F.tanh
@@ -551,42 +580,73 @@ class RNNCell(Module):
             self.activation = F.relu
 
     def forward(self, x: Tensor, h: Tensor) -> Tensor:
-        '''
-        单个RNN的前向传播
-        :param x:  形状 [batch_size, input_size]
-        :param h:  形状 [batch_size, hidden_size]
-        :return:
-        '''
-        # [batch_size, input_size] x [input_size, hidden_size] + [batch_size, hidden_size] x [hidden_size, hidden_size]
-        # = [batch_size, hidden_size]
         h_next = self.activation(self.input_trans(x) + self.hidden_trans(h))
         return h_next
 
 
-class RNN(Module):
-    def __init__(self, input_size: int, hidden_size: int, batch_first: bool = False, num_layers: int = 1,
-                 nonlinearity: str = 'tanh', bidirectional: bool = False,
-                 bias: bool = True, dropout: float = 0) -> None:
-        '''
+class LSTMCell(RNNCellBase):
+    def __init__(self, input_size, hidden_size: int, bias: bool = True, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(LSTMCell, self).__init__(input_size, hidden_size, num_chunks=4, bias=bias, **factory_kwargs)
 
-        :param input_size:  输入x的特征数
-        :param hidden_size: 隐藏状态的特征数
-        :param batch_first:
-        :param num_layers: 层数
-        :param nonlinearity: 非线性激活函数 tanh | relu
-        :param bidirectional: 是否为双向
-        :param bias: 线性层是否包含偏置
-        :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
+    def forward(self, x: Tensor, state: Tensor) -> Tuple[Tensor, Tensor]:
+        h, c = state
+        ifgo = self.input_trans(x) + self.hidden_trans(h)
+        ifgo = F.chunk(ifgo, 4, -1)
+        # 一次性计算三个门 与 g_t
+        i, f, g, o = ifgo
+
+        c_next = F.sigmoid(f) * c + F.sigmoid(i) * F.tanh(g)
+
+        h_next = F.sigmoid(o) * F.tanh(c_next)
+
+        return h_next, c_next
+
+
+class GRUCell(RNNCellBase):
+    def __init__(self, input_size, hidden_size: int, bias: bool = True, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(GRUCell, self).__init__(input_size, hidden_size, num_chunks=3, bias=bias, **factory_kwargs)
+
+    def forward(self, x: Tensor, state: Tensor) -> Tensor:
+        input_trans = self.input_trans(x)
+        hidden_trans = self.hidden_trans(state)
+
+        i_r, i_z, i_g = F.chunk(input_trans, 3, -1)
+        h_r, h_z, h_g = F.chunk(hidden_trans, 3, -1)
+
+        r = F.sigmoid(i_r + h_r)  # 重置门
+        z = F.sigmoid(i_z + h_z)  # 更新门
+
+        h_next = z * state + (1 - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
+        return h_next
+
+
+class RNNBase(Module):
+    def __init__(self, cell: RNNCellBase, input_size: int, hidden_size: int, batch_first: bool = False,
+                 num_layers: int = 1,
+                 bidirectional: bool = False, bias: bool = True, dropout: float = 0, ) -> None:
         '''
-        super(RNN, self).__init__()
+           :param input_size:  输入x的特征数
+           :param hidden_size: 隐藏状态的特征数
+           :param batch_first: 批次维度是否在前面
+           :param num_layers: 层数
+           :param bidirectional: 是否为双向
+           :param bias: 线性层是否包含偏置
+           :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
+       '''
+        super(RNNBase, self).__init__()
         self.num_layers = num_layers
         self.hidden_size = hidden_size
+        self.input_size = input_size
         self.batch_first = batch_first
         self.bidirectional = bidirectional
+        self.bias = bias
 
         # 支持多层
-        self.cells = ModuleList([RNNCell(input_size, hidden_size, bias, nonlinearity)] +
-                                [RNNCell(hidden_size, hidden_size, bias, nonlinearity) for _ in range(num_layers - 1)])
+        self.cells = ModuleList([cell(input_size, hidden_size, bias)] +
+                                [cell(hidden_size, hidden_size, bias) for _ in
+                                 range(num_layers - 1)])
         if self.bidirectional:
             # 支持双向
             self.back_cells = copy.deepcopy(self.cells)
@@ -596,13 +656,14 @@ class RNN(Module):
             # Dropout层
             self.dropout_layer = Dropout(dropout)
 
-    def _one_directional_op(self, input, cells, n_steps, hs, reverse=False):
+    def _one_directional_op(self, input, cells, n_steps, hs, cs=None, reverse=False):
         '''
 
         Args:
             input: 输入 [n_steps, batch_size, input_size]
             cells: 正向或反向RNNCell的ModuleList
-            hs:
+            hs: 隐藏状态
+            cs: 单元状态
             n_steps: 步长
             reverse: true 反向
 
@@ -634,11 +695,49 @@ class RNN(Module):
 
         return output, h_n
 
-    def forward(self, input: Tensor, h_0: Tensor) -> Tuple[Tensor, Tensor]:
+    def _handle_hidden_state(self, input, state):
+        is_batched = input.ndim == 3
+        batch_dim = 0 if self.batch_first else 1
+        if not is_batched:
+            # 转换为批大小为1的输入
+            input = input.unsqueeze(batch_dim)
+            if state is not None:
+                state = state.unsqueeze(1)
+
+        if self.batch_first:
+            batch_size, n_steps, _ = input.shape
+            input = input.transpose((1, 0, 2))  # 将batch放到中间维度
+        else:
+            n_steps, batch_size, _ = input.shape
+
+        if state is None:
+            num_directions = 2 if self.bidirectional else 1
+            h = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
+                             device=input.device)
+        else:
+            h = state
+
+        # 得到每层的状态
+        hs = list(F.unbind(h))  # 按层数拆分h
+
+        return hs, None, input, n_steps, batch_size
+
+    def _bidirectional_forward(self, input, n_steps, hs, cs=None):
+        output_f, h_n_f = self._one_directional_op(input, self.cells, n_steps, hs[:self.num_layers])
+
+        output_b, h_n_b = self._one_directional_op(F.flip(input, 0), self.back_cells, n_steps, hs[self.num_layers:],
+                                                   reverse=True)
+
+        output = F.cat([output_f, output_b], 2)
+        h_n = F.cat([h_n_f, h_n_b], 0)
+
+        return output, h_n
+
+    def forward(self, input: Tensor, state: Tensor) -> Tuple[Tensor, Union[Tensor, Tuple[Tensor, Tensor]]]:
         '''
         RNN的前向传播
         :param input: 形状 [n_steps, batch_size, input_size] 若batch_first=False
-        :param h_0: 形状 [num_layers, batch_size, hidden_size]
+        :param state: (隐藏状态，单元状态)元组， 每个元素形状 [num_layers, batch_size, hidden_size]
         :return:
             num_directions = 2 if self.bidirectional else 1
 
@@ -648,66 +747,57 @@ class RNN(Module):
             h_n: (num_directions * num_layers, batch_size, hidden_size) 包含最终隐藏状态
         '''
 
-        is_batched = input.ndim == 3
-        batch_dim = 0 if self.batch_first else 1
-        if not is_batched:
-            # 转换为批大小为1的输入
-            input = input.unsqueeze(batch_dim)
-            if h_0 is not None:
-                h_0 = h_0.unsqueeze(1)
-        if self.batch_first:
-            batch_size, n_steps, _ = input.shape
-            input = input.transpose((1, 0, 2))  # 将batch放到中间维度
-        else:
-            n_steps, batch_size, _ = input.shape
-
-        if h_0 is None:
-            num_directions = 2 if self.bidirectional else 1
-            h = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
-                             device=input.device)
-        else:
-            h = h_0
-
-        hs = list(F.unbind(h))  # 按层数拆分h
+        hs, cs, input, n_steps, batch_size = self._handle_hidden_state(input, state)
 
         if not self.bidirectional:
             # 如果是单向的
-            output, h_n = self._one_directional_op(input, self.cells, n_steps, hs)
+            output, state = self._one_directional_op(input, self.cells, n_steps, hs, cs)
+            return output, state
         else:
-            output_f, h_n_f = self._one_directional_op(input, self.cells, n_steps, hs[:self.num_layers])
+            return self._bidirectional_forward(input, n_steps, hs, cs)
 
-            output_b, h_n_b = self._one_directional_op(F.flip(input, 0), self.back_cells, n_steps, hs[self.num_layers:],
-                                                       reverse=True)
+    def extra_repr(self) -> str:
+        s = 'input_size={input_size}, hidden_size={hidden_size}'
+        if self.num_layers != 1:
+            s += ', num_layers={num_layers}'
+        if self.bias is not True:
+            s += ', bias={bias}'
+        if self.batch_first is not False:
+            s += ', batch_first={batch_first}'
+        if self.dropout != 0:
+            s += ', dropout={dropout}'
+        if self.bidirectional is not False:
+            s += ', bidirectional={bidirectional}'
+        return s.format(**self.__dict__)
 
-            output = F.cat([output_f, output_b], 2)
-            h_n = F.cat([h_n_f, h_n_b], 0)
 
-        return output, h_n
+class RNN(RNNBase):
+    def __init__(self, *args, **kwargs) -> None:
+        '''
+        :param input_size:  输入x的特征数
+        :param hidden_size: 隐藏状态的特征数
+        :param batch_first:
+        :param num_layers: 层数
+        :param bidirectional: 是否为双向
+        :param bias: 线性层是否包含偏置
+        :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
+        :param nonlinearity: 非线性激活函数 tanh | relu
+        '''
+        super(RNN, self).__init__(RNNCell, *args, **kwargs)
 
 
-class LSTMCell(Module):
-    def __init__(self, input_size, hidden_size: int, bias: bool = True) -> None:
-        super(LSTMCell, self).__init__()
-        # 组合了 x->input gate; x-> forget gate; x-> g ; x-> output gate 的线性转换
-        self.input_trans = Linear(hidden_size, 4 * hidden_size, bias=bias)
-        # 组合了 h->input gate; h-> forget gate; h-> g ; h-> output gate 的线性转换
-        self.hidden_trans = Linear(input_size, 4 * hidden_size, bias=bias)
-
-    def forward(self, x: Tensor, h: Tensor, c: Tensor) -> Tuple[Tensor, Tensor]:
-        # i: input gate
-        # f: forget gate
-        # o: output gate
-        # g: g_t
-        ifgo = self.input_trans(h) + self.hidden_trans(x)
-        ifgo = F.chunk(ifgo, 4, -1)
-        # 一次性计算三个门 与 g_t
-        i, f, g, o = ifgo
-
-        c_next = F.sigmoid(f) * c + F.sigmoid(i) * F.tanh(g)
-
-        h_next = F.sigmoid(o) * F.tanh(c_next)
-
-        return h_next, c_next
+class GRU(RNNBase):
+    def __init__(self, *args, **kwargs):
+        '''
+        :param input_size:  输入x的特征数
+        :param hidden_size: 隐藏状态的特征数
+        :param batch_first:
+        :param num_layers: 层数
+        :param bidirectional: 是否为双向
+        :param bias: 线性层是否包含偏置
+        :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
+        '''
+        super(GRU, self).__init__(GRUCell, *args, **kwargs)
 
 
 class LSTM(Module):
@@ -732,9 +822,8 @@ class LSTM(Module):
             # Dropout层
             self.dropout_layer = Dropout(dropout)
 
-    def _one_directional_op(self, input, cells, n_steps, hs, cs, reverse=False):
+    def _one_directional_op(self, input, cells, n_steps, state, reverse=False):
         '''
-
         Args:
             input: 输入 [n_steps, batch_size, input_size]
             cells: 正向或反向RNNCell的ModuleList
@@ -742,16 +831,15 @@ class LSTM(Module):
             cs:
             n_steps: 步长
             reverse: true 反向
-
         Returns:
-
         '''
         output = []
+        hs, cs = state
         for t in range(n_steps):
             inp = input[t]
 
             for layer in range(self.num_layers):
-                hs[layer], cs[layer] = cells[layer](inp, hs[layer], cs[layer])
+                hs[layer], cs[layer] = cells[layer](inp, (hs[layer], cs[layer]))
                 inp = hs[layer]
                 if self.dropout and layer != self.num_layers - 1:
                     inp = self.dropout_layer(inp)
@@ -774,19 +862,14 @@ class LSTM(Module):
 
     def forward(self, input: Tensor, state: Optional[Tuple[Tensor, Tensor]] = None):
         '''
-
         Args:
             input: 形状 [n_steps, batch_size, input_size] 若batch_first=False ；否则形状 [batch_size, n_steps, input_size]
             state: 元组(h,c)
-
             num_directions = 2 if self.bidirectional else 1
-
             h: [num_directions * num_layers, batch_size, hidden_size]
             c: [num_directions * num_layers, batch_size, hidden_size]
-
         Returns:
             num_directions = 2 if self.bidirectional else 1
-
             output: (n_steps, batch_size, num_directions * hidden_size)若batch_first=False 或
                     (batch_size, n_steps, num_directions * hidden_size)若batch_first=True
                     包含每个时间步最后一层(多层RNN)的输出h_t
@@ -825,13 +908,13 @@ class LSTM(Module):
 
         if not self.bidirectional:
             # 如果是单向的
-            output, (h_n, c_n) = self._one_directional_op(input, self.cells, n_steps, hs, cs)
+            output, (h_n, c_n) = self._one_directional_op(input, self.cells, n_steps, (hs, cs))
         else:
-            output_f, (h_n_f, c_n_f) = self._one_directional_op(input, self.cells, n_steps, hs[:self.num_layers],
-                                                                cs[:self.num_layers])
+            output_f, (h_n_f, c_n_f) = self._one_directional_op(input, self.cells, n_steps, (hs[:self.num_layers],
+                                                                                             cs[:self.num_layers]))
 
             output_b, (h_n_b, c_n_b) = self._one_directional_op(F.flip(input, 0), self.back_cells, n_steps,
-                                                                hs[self.num_layers:], cs[self.num_layers:],
+                                                                (hs[self.num_layers:], cs[self.num_layers:]),
                                                                 reverse=True)
 
             output = F.cat([output_f, output_b], 2)
@@ -841,73 +924,67 @@ class LSTM(Module):
         return output, (h_n, c_n)
 
 
-class GRUCell(Module):
-    def __init__(self, input_size, hidden_size: int, bias: bool = False) -> None:
-        super(GRUCell, self).__init__()
-        # 组合了 x->reset gate; x->update gate; x->g 的线性转换
-        self.input_trans = Linear(hidden_size, 3 * hidden_size, bias=bias)
-        # 组合了 h->reset gate; h->update gate; h->g 的线性转换
-        self.hidden_trans = Linear(input_size, 3 * hidden_size, bias=bias)
+class LSTM1(RNNBase):
+    '''
+    写很多重复代码，是为了减少if-else判断，增加代码运行效率。
+    '''
 
-    def forward(self, x: Tensor, h: Tensor) -> Tensor:
-        # r: rest gate
-        # z: output gate
-        # g: g_t
-        input_trans = self.input_trans(x)
-        hidden_trans = self.hidden_trans(h)
+    def __init__(self, *args, **kwargs):
+        super(LSTM1, self).__init__(LSTMCell, *args, **kwargs)
 
-        i_r, i_z, i_g = F.chunk(input_trans, 3, -1)
-        h_r, h_z, h_g = F.chunk(hidden_trans, 3, -1)
+    def _handle_hidden_state(self, input, state):
+        h_0, c_0 = None, None
+        if state is not None:
+            h_0, c_0 = state
 
-        r = F.sigmoid(i_r + h_r)  # 重置门
-        z = F.sigmoid(i_z + h_z)  # 更新门
+        is_batched = input.ndim == 3
+        batch_dim = 0 if self.batch_first else 1
+        if not is_batched:
+            # 转换为批大小为1的输入
+            input = input.unsqueeze(batch_dim)
+            if state is not None:
+                h_0 = h_0.unsqueeze(1)
+                c_0 = c_0.unsqueeze(1)
 
-        h_next = z * h + (1 - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
+        if self.batch_first:
+            batch_size, n_steps, _ = input.shape
+            input = input.transpose((1, 0, 2))  # 将batch放到中间维度
+        else:
+            n_steps, batch_size, _ = input.shape
 
-        return h_next
+        if state is None:
+            num_directions = 2 if self.bidirectional else 1
+            h_0 = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
+                               device=input.device)
+            c_0 = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
+                               device=input.device)
 
+        # 得到每层的状态
+        hs, cs = list(F.split(h_0)), list(F.split(c_0))
 
-class GRU(Module):
-    def __init__(self, input_size: int, hidden_size: int, batch_first: bool = False, num_layers: int = 1,
-                 bidirectional: bool = False, dropout: float = 0):
-        super(GRU, self).__init__()
-        self.num_layers = num_layers
-        self.hidden_size = hidden_size
-        self.batch_first = batch_first
-        self.bidirectional = bidirectional
+        return hs, cs, input, n_steps, batch_size
 
-        # 支持多层
-        self.cells = ModuleList([GRUCell(input_size, hidden_size)] +
-                                [GRUCell(hidden_size, hidden_size) for _ in range(num_layers - 1)])
-
-        if self.bidirectional:
-            # 支持双向
-            self.back_cells = copy.deepcopy(self.cells)
-
-        self.dropout = dropout
-        if dropout:
-            # Dropout层
-            self.dropout_layer = Dropout(dropout)
-
-    def _one_directional_op(self, input, cells, n_steps, hs, reverse=False):
+    def _one_directional_op(self, input, cells, n_steps, state, reverse=False):
         '''
 
         Args:
             input: 输入 [n_steps, batch_size, input_size]
             cells: 正向或反向RNNCell的ModuleList
-            hs:
+            state: 隐藏状态
             n_steps: 步长
             reverse: true 反向
 
         Returns:
 
         '''
+        hs, cs = state
+
         output = []
         for t in range(n_steps):
             inp = input[t]
 
             for layer in range(self.num_layers):
-                hs[layer] = cells[layer](inp, hs[layer])
+                hs[layer], cs[layer] = cells[layer](inp, (hs[layer], cs[layer]))
                 inp = hs[layer]
                 if self.dropout and layer != self.num_layers - 1:
                     inp = self.dropout_layer(inp)
@@ -924,55 +1001,21 @@ class GRU(Module):
             output = output.transpose((1, 0, 2))
 
         h_n = F.stack(hs)
+        c_n = F.stack(cs)
 
-        return output, h_n
+        return output, (h_n, c_n)
 
-    def forward(self, input: Tensor, h_0: Tensor) -> Tuple[Tensor, Tensor]:
-        '''
-        RNN的前向传播
-        :param input: 形状 [n_steps, batch_size, input_size] 若batch_first=False
-        :param h_0: 形状 [num_layers, batch_size, hidden_size]
-        :return:
-            num_directions = 2 if self.bidirectional else 1
+    def _bidirectional_forward(self, input, n_steps, state):
+        hs, cs = state
+        output_f, (h_n_f, c_n_f) = self._one_directional_op(input, self.cells, n_steps,
+                                                            (hs[:self.num_layers], cs[:self.num_layers]))
 
-            output: (n_steps, batch_size, num_directions * hidden_size)若batch_first=False 或
-                    (batch_size, n_steps, num_directions * hidden_size)若batch_first=True
-                    包含每个时间步最后一层(多层RNN)的输出h_t
-            h_n: (num_directions * num_layers, batch_size, hidden_size) 包含最终隐藏状态
-        '''
+        output_b, (h_n_b, c_n_b) = self._one_directional_op(F.flip(input, 0), self.back_cells, n_steps,
+                                                            (hs[self.num_layers:], cs[self.num_layers:]),
+                                                            reverse=True)
 
-        is_batched = input.ndim == 3
-        batch_dim = 0 if self.batch_first else 1
-        if not is_batched:
-            # 转换为批大小为1的输入
-            input = input.unsqueeze(batch_dim)
-            if h_0 is not None:
-                h_0 = h_0.unsqueeze(1)
-        if self.batch_first:
-            batch_size, n_steps, _ = input.shape
-            input = input.transpose((1, 0, 2))  # 将batch放到中间维度
-        else:
-            n_steps, batch_size, _ = input.shape
+        output = F.cat([output_f, output_b], 2)
+        h_n = F.cat([h_n_f, h_n_b], 0)
+        c_n = F.cat([c_n_f, c_n_b], 0)
 
-        if h_0 is None:
-            num_directions = 2 if self.bidirectional else 1
-            h = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
-                             device=input.device)
-        else:
-            h = h_0
-
-        hs = list(F.unbind(h))  # 按层数拆分h
-
-        if not self.bidirectional:
-            # 如果是单向的
-            output, h_n = self._one_directional_op(input, self.cells, n_steps, hs)
-        else:
-            output_f, h_n_f = self._one_directional_op(input, self.cells, n_steps, hs[:self.num_layers])
-
-            output_b, h_n_b = self._one_directional_op(F.flip(input, 0), self.back_cells, n_steps, hs[self.num_layers:],
-                                                       reverse=True)
-
-            output = F.cat([output_f, output_b], 2)
-            h_n = F.cat([h_n_f, h_n_b], 0)
-
-        return output, h_n
+        return output, (h_n, c_n)

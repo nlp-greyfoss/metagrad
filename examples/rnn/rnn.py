@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 
 from tqdm.auto import tqdm
@@ -36,11 +38,20 @@ class RNNDataset(Dataset):
 
 class RNN(nn.Module):
     def __init__(self, vocab_size: int, embedding_dim: int, hidden_dim: int, output_dim: int, n_layers: int,
-                 dropout: float, bidirectional: bool = False):
+                 dropout: float, bidirectional: bool = False, mode: str = 'RNN'):
         super(RNN, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
-                          bidirectional=bidirectional)
+        if mode == 'GRU':
+            self.rnn = nn.GRU(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
+                              bidirectional=bidirectional)
+        elif mode == 'LSTM':
+            self.rnn = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
+                               bidirectional=bidirectional)
+        else:
+            self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
+                              bidirectional=bidirectional)
+
+        print('model:', self.rnn)
 
         num_directions = 2 if bidirectional else 1
         self.output = nn.Linear(num_directions * hidden_dim, output_dim)
@@ -69,10 +80,10 @@ def load_treebank():
     return train_data, test_data, vocab, tag_vocab
 
 
-embedding_dim = 128
-hidden_dim = 128
+embedding_dim = 64
+hidden_dim = 32
 batch_size = 32
-num_epoch = 10
+num_epoch = 1
 n_layers = 2
 dropout = 0.2
 
@@ -85,15 +96,18 @@ test_data_loader = DataLoader(test_dataset, batch_size=batch_size, collate_fn=te
 
 num_class = len(pos_vocab)
 
+mode = 'LSTM' # RNN GRU
+
 # 加载模型
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
-model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=True)
+model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=False, mode=mode)
 model.to(device)
 
 # 训练过程
 nll_loss = NLLLoss()
 optimizer = SGD(model.parameters(), lr=0.1)
 
+start = time.time()
 model.train()  # 确保应用了dropout
 for epoch in range(num_epoch):
     total_loss = 0
@@ -120,3 +134,4 @@ for batch in tqdm(test_data_loader, desc=f"Testing"):
 
 # 输出在测试集上的准确率
 print(f"Acc: {acc / total:.2f}")
+print(f'Cost:{(time.time() - start)}')
