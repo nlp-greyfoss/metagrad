@@ -10,6 +10,7 @@ class _Loss(Module):
     reduction: str  # none | mean | sum
 
     def __init__(self, reduction: str = "mean") -> None:
+        super(_Loss, self).__init__()
         self.reduction = reduction
 
 
@@ -36,6 +37,7 @@ class BCELoss(_Loss):
     '''
     像torch BCEWithLogitsLoss
     '''
+
     def __init__(self, reduction: str = "mean") -> None:
         super().__init__(reduction)
 
@@ -53,12 +55,12 @@ class CrossEntropyLoss(_Loss):
         super().__init__(reduction)
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
-         '''
-         :param input: logits
-         :param target: 真实标签one-hot向量
-         :return:
-         '''
-         return F.cross_entropy(input, target, self.reduction)
+        '''
+        :param input: logits
+        :param target: 真实标签one-hot向量
+        :return:
+        '''
+        return F.cross_entropy(input, target, self.reduction)
 
 
 class NLLLoss(_Loss):

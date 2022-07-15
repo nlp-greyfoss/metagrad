@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from typing import List
 
 import imageio
 import numpy as np
@@ -260,3 +261,33 @@ def run_epoch(model: nn.Module, data_loader: DataLoader, loss: nn.Module, opt: O
         metric.add(l.sum().item(), evaluate_func(activate_func(y_pred), y_batch), y_batch.size())
     # 总损失 / 样本总数 ， 总准确率 / 样本总数
     return metric[0] / metric[2], metric[1] / metric[2]
+
+
+def pad_sequence(sequences: List[Tensor], padding_value: int = 0) -> Tensor:
+    max_len = max(len(x) for x in sequences)
+
+    shape = (len(sequences), max_len) + sequences[0].shape[1:]
+    y = Tensor.empty(shape, dtype=sequences[0].dtype)
+    for i, x in enumerate(sequences):
+        l = len(x)
+        if l == max_len:
+            y[i] = x
+        else:
+            y[i, 0:l] = x
+            y[i, l:] = padding_value
+
+    return y
+
+
+def unpad_sequence(padded_sequences, lengths):
+    unpadded_sequences = []
+
+    max_len = padded_sequences.shape[1]
+    idx = Tensor.arange(max_len)
+
+    for seq, length in zip(padded_sequences, lengths):
+        mask = idx < length
+        unpacked_seq = seq[mask]
+        unpadded_sequences.append(unpacked_seq)
+
+    return unpadded_sequences

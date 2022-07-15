@@ -13,6 +13,7 @@ import metagrad.functions as F
 
 class SoftmaxRegression(Module):
     def __init__(self, input_dim, output_dim):
+        super(SoftmaxRegression, self).__init__()
         self.linear = Linear(input_dim, output_dim)
 
     def forward(self, x: Tensor) -> Tensor:

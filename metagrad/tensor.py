@@ -1,10 +1,11 @@
 import contextlib
+import heapq
 import importlib
 import inspect
-import time
 import os
+import time
 from numbers import Number
-from typing import Union, Tuple, Any, List
+from typing import Union, Tuple, List
 
 import numpy as np
 
@@ -12,7 +13,6 @@ from metagrad import cuda
 from metagrad.cuda import (
     Device,
     get_device_from_array,
-    get_device,
     CpuDevice,
     GpuDevice,
     check_cuda_available,
@@ -145,6 +145,8 @@ class Tensor:
             device = get_device_from_array(data)
 
         self._device = device
+        self.creator = None
+        self.generation = 0
 
         # data 是 NdArray
         self._data = ensure_array(data, dtype, self._device)
@@ -155,9 +157,6 @@ class Tensor:
 
         if self.requires_grad:
             self.zero_grad()
-
-        # 用于计算图的内部变量
-        self._ctx = None
 
     @property
     def grad(self):
@@ -272,6 +271,13 @@ class Tensor:
         '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
 
+    def set_creator(self, func):
+        self.creator = func
+        self.generation = func.generation + 1
+
+    def unchain(self):
+        self.creator = None
+        
     def int_(self) -> "Tensor":
         self.data = self.data.astype(np.int16)
         return self
@@ -279,13 +285,6 @@ class Tensor:
     def float_(self) -> "Tensor":
         self.data = self.data.astype(np.float32)
         return self
-
-    #
-    # def squeeze(self, axis=None) -> "Tensor":
-    #     return Tensor(self.array().squeeze(axis=axis), device=self.device, requires_grad=self.requires_grad)
-    #
-    # def unsqueeze(self, axis=Union[int, Tuple]) -> "Tensor":
-    #     return Tensor(self.xp.expand_dims(self.array(), axis), device=self.device, requires_grad=self.requires_grad)
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
         xp = self.device.xp
@@ -396,7 +395,9 @@ class Tensor:
         return self.slice(idxs)
 
     def __setitem__(self, key, value):
-        self.data[key] = value.item()
+        if isinstance(value, Tensor):
+            value = value.data
+        self.data[key] = value
         # self._grad = None
         return self
 
@@ -404,40 +405,13 @@ class Tensor:
     def T(self) -> "Tensor":
         return self.transpose(axes=None)
 
-    """
-     backward函数现在应该从当前节点(Tensor)回溯到所有依赖节点(depends_on)，计算路径上的偏导
-        # 我们分为两部分
-        # a) 遍历计算图
-        #    如果c是a经过某个函数的结果( c=f(a) )，我们无法知道a的梯度，直到我们得到了c的梯度(链式法则)
-        #    所以我们需要逆序计算图中的拓扑结构(reverse mode)，相当沿着有向图的←方向(从指向节点到起始节点)进行计算
-        # b) 应用梯度
-        #    现在我们能访问到每个node,我们用它的backward函数将梯度传递给它们的depends_on
-    """
-
-    def _rev_topo_sort(self):
-        '''
-        a) 遍历计算图，逆序计算图中的拓扑结构
-        Returns:
-        '''
-
-        def visit(node, visited, nodes):
-            # 标记为已访问
-            visited.add(node)
-            if node._ctx:
-                # 遍历所有依赖节点，递归调用visit
-                [visit(nd, visited, nodes) for nd in node._ctx.depends_on if nd not in visited]
-                # 递归调用结束后将node入nodes
-                nodes.append(node)
-            # 返回遍历结果
-            return nodes
-
-        return reversed(visit(self, set(), []))
-
-    def backward(self, grad: "Tensor" = None) -> None:
+    def backward(self, grad: "Tensor" = None, retain_grad=False, create_graph=False) -> None:
         '''
         实现Tensor的反向传播
         Args:
             grad: 如果该Tensor不是标量，则需要传递梯度进来
+            retain_grad: 是否保留梯度的中间变量
+            create_graph: 是否整个计算梯度的过程也需要保留到计算图中，即double_backprop
 
         Returns:
 
@@ -454,34 +428,58 @@ class Tensor:
                 # 设置梯度值为1，grad本身不需要计算梯度
                 self._grad = Tensor(1., device=self.device)
             else:
-                # 如果当前Tensor得到不是标量，那么grad必须制定
+                # 如果当前Tensor得到不是标量，那么grad必须指定
                 raise RuntimeError("grad must be specified for non scalar")
         else:
             self._grad = ensure_tensor(grad, device=self.device)
 
-        for t0 in self._rev_topo_sort():
-            if not any(x.requires_grad for x in t0._ctx.depends_on):
-                continue
+        funcs = []  # 候选函数堆
+        seen_set = set()
 
-            assert t0.grad is not None
+        def add_func(f):
+            if f not in seen_set:
+                # heapq是小顶堆，为了实现大顶堆的效果，需要加一个负号
+                heapq.heappush(funcs, (-f.generation, len(seen_set), f))
+                seen_set.add(f)
 
-            with OpWrapper(t0._ctx.__class__.__name__, [t0.grad], backward=True):
-                # 以逆序计算梯度，调用t相关运算操作的backward静态方法
-                # 计算流向其依赖节点上的梯度(流向其下游)
-                grads = t0._ctx.backward(t0._ctx, t0.grad.data)
+        add_func(self.creator)
+        while funcs:
+            _, _, f = heapq.heappop(funcs)
+            # 获取输出对应的梯度，解决多个输出梯度不一致的问题
+            gys = [output().grad.data for output in f.outputs]  # output 是 weakref
 
-            # 如果只依赖一个输入，我们也通过列表来封装，防止zip将其继续拆分
-            if len(t0._ctx.depends_on) == 1 or not isinstance(grads, tuple):
-                grads = [grads]
+            with using_config('backprop', create_graph):
+                with OpWrapper(f.__class__.__name__, gys, backward=True):
+                    gxs = f.backward(*gys)
+                if not isinstance(gxs, tuple):
+                    gxs = (gxs,)
 
-            for t, g in zip(t0._ctx.depends_on, grads):
-                # 计算其下游节点上的累积梯度，因为可能有多条边
-                if t.requires_grad and g is not None:
-                    # t.shape要和grad.shape保持一致
-                    assert t.shape == g.shape, f"grad shape must match tensor shape in {self._ctx!r}, {g.shape!r} != {t.shape!r}"
-                    # grad Tensor
-                    gt = Tensor(g, device=self.device, dtype=self.dtype)
-                    t._grad = gt if t.grad is None else t.grad + gt
+                for x, gx in zip(f.inputs, gxs):
+                    if x.requires_grad and gx is not None:
+                        assert x.shape == gx.shape, f"grad shape must match tensor shape in {f!r}, {gx.shape!r} != {x.shape!r}"
+
+                        gx = Tensor(gx, device=self.device, dtype=self.dtype)
+                        if x.grad is None:
+                            x._grad = gx
+                        else:
+                            x._grad = x.grad + gx
+
+                        if x.creator is not None:
+                            add_func(x.creator)
+
+            if not retain_grad:
+                for y in f.outputs:
+                    y()._grad = None
+
+    def unchain_backward(self):
+        if self.creator is not None:
+            funcs = [self.creator]
+            while funcs:
+                f = funcs.pop()
+                for x in f.inputs:
+                    if x.creator is not None:
+                        funcs.append(x.creator)
+                        x.unchain()
 
 
 def register(name, fxn):
@@ -491,7 +489,7 @@ def register(name, fxn):
 
         xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
 
-        return fxn.apply(fxn, *xs, **kwargs)
+        return fxn()(*xs, **kwargs)
 
     if name in ["pow", "neg", "abs"]:
         setattr(Tensor, f"__{name}__", dispatch)

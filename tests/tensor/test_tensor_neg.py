@@ -3,7 +3,7 @@ import numpy as np
 from metagrad.tensor import Tensor
 
 
-def test_simple_exp():
+def test_simple_neg():
     x = Tensor(2, requires_grad=True)
     z = -x  # -2
 
@@ -14,7 +14,7 @@ def test_simple_exp():
     assert x.grad.data == -1
 
 
-def test_array_exp():
+def test_array_neg():
     x = Tensor([1, 2, 3], requires_grad=True)
 
     z = -x

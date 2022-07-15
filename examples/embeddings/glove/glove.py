@@ -41,14 +41,15 @@ class GloveDataset(Dataset):
         return self.data[i]
 
     def collate_fn(self, examples):
-        words = Tensor([ex[0] for ex in examples])
-        contexts = Tensor([ex[1] for ex in examples])
+        words = Tensor([ex[0] for ex in examples], dtype=np.int)
+        contexts = Tensor([ex[1] for ex in examples], dtype=np.int)
         counts = Tensor([ex[2] for ex in examples])
         return words.int_(), contexts.int_(), counts
 
 
 class GloveModel(nn.Module):
     def __init__(self, vocab_size, embeddings_dim, m_max, alpha):
+        super(GloveModel, self).__init__()
         # 词嵌入
         self.w_embeddings = nn.Embedding(vocab_size, embeddings_dim)
         # 偏置

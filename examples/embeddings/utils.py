@@ -68,6 +68,16 @@ class Vocabulary:
     def to_tokens(self, indices):
         return [self._idx_to_token[index] for index in indices]
 
+    def save(self, path):
+        with open(path, 'w') as f:
+            f.write("\n".join(self.id2token))
+
+    @classmethod
+    def load(cls, path):
+        with open(path, 'r') as f:
+            tokens = f.read().split('\n')
+        return cls(tokens)
+
 
 def load_corpus(corpus_path, min_freq=2):
     '''

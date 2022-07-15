@@ -2,14 +2,13 @@ import numpy as np
 from tqdm import tqdm
 
 import metagrad.module as nn
+from examples.embeddings.utils import BOS_TOKEN, EOS_TOKEN, WEIGHT_INIT_RANGE, load_corpus, save_pretrained
 from metagrad import Tensor, cuda
 from metagrad.dataloader import DataLoader
 from metagrad.dataset import Dataset
 from metagrad.init import uniform_
 from metagrad.loss import CrossEntropyLoss
 from metagrad.optim import SGD
-from metagrad.tensor import debug_mode
-from examples.embeddings.utils import BOS_TOKEN, EOS_TOKEN, WEIGHT_INIT_RANGE, load_corpus, save_pretrained
 
 
 class CBOWDataset(Dataset):
@@ -52,6 +51,7 @@ class CBOWDataset(Dataset):
 
 class CBOWModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
+        super(CBOWModel, self).__init__()
         # 词向量层，即权重矩阵W
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
         uniform_(self.embeddings.weight, -WEIGHT_INIT_RANGE, WEIGHT_INIT_RANGE)

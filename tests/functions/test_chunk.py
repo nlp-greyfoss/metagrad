@@ -5,51 +5,53 @@ import metagrad.functions as F
 from metagrad.tensor import Tensor
 
 
-def test_simple_split():
-    x = np.arange(6).reshape((2, 3)).astype(np.float32)
-    # x = array([[0., 1., 2.],
-    #           [3., 4., 5.]], dtype=float32)
+def test_simple_chunk():
+    x = np.arange(12).astype(np.float32)
 
     mx = Tensor(x, requires_grad=True)
 
     tx = torch.tensor(x, requires_grad=True)
 
-    my = F.split(mx)
-    ty = torch.split(tx, 1)
+    my = F.chunk(mx, 2)
+    ty = torch.chunk(tx, 2)
 
     # 这里返回的是元组
     assert isinstance(my, tuple)
 
     assert np.allclose(my[0].data, ty[0].data)
+    assert np.allclose(my[-1].data, ty[-1].data)
 
-    (my[0] + my[1]).sum().backward()
-    (ty[0] + ty[1]).sum().backward()
+    ty0 = ty[0] * 2
+    ty1 = ty[1] * 3
+
+    my0 = my[0] * 2
+    my1 = my[1] * 3
+
+    (my0 + my1).sum().backward()
+    (ty0 + ty1).sum().backward()
 
     assert np.allclose(mx.grad.data, tx.grad.data)
 
 
-def test_split():
-    x = np.arange(6).reshape((2, 3)).astype(np.float32)
-    # x = array([[0., 1., 2.],
-    #           [3., 4., 5.]], dtype=float32)
+def test_chunk():
+    x = np.arange(11).astype(np.float32)
 
     mx = Tensor(x, requires_grad=True)
 
     tx = torch.tensor(x, requires_grad=True)
 
-    my = F.split(mx)
-    ty = torch.split(tx, 1)
+    my = F.chunk(mx, 6)
+    ty = torch.chunk(tx, 6)
 
     # 这里返回的是元组
     assert isinstance(my, tuple)
 
     assert np.allclose(my[0].data, ty[0].data)
+    assert np.allclose(my[-1].data, ty[-1].data)
 
     (my[0]).sum().backward()
     (ty[0]).sum().backward()
 
     print(mx.grad.data)
-    print(tx.grad.data)
 
     assert np.allclose(mx.grad.data, tx.grad.data)
-
