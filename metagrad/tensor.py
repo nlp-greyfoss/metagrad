@@ -277,6 +277,14 @@ class Tensor:
 
     def unchain(self):
         self.creator = None
+        
+    def int_(self) -> "Tensor":
+        self.data = self.data.astype(np.int16)
+        return self
+
+    def float_(self) -> "Tensor":
+        self.data = self.data.astype(np.float32)
+        return self
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
         xp = self.device.xp

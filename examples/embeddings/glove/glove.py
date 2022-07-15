@@ -19,11 +19,11 @@ class GloveDataset(Dataset):
         self.eos = vocab[EOS_TOKEN]
 
         for sentence in tqdm(corpus, desc='Dataset Construction'):
-            sentent = [self.bos] + sentence + [self.eos]
-            for i in range(1, len(sentent) - 1):
-                w = sentent[i]
-                left_contexts = sentent[max(0, i - window_size):i]
-                right_contexts = sentent[i + 1: min(len(sentent), i + window_size)]
+            sentence = [self.bos] + sentence + [self.eos]
+            for i in range(1, len(sentence) - 1):
+                w = sentence[i]
+                left_contexts = sentence[max(0, i - window_size):i]
+                right_contexts = sentence[i + 1: min(len(sentence), i + window_size)]
                 # 共现次数随距离衰减
                 for k, c in enumerate(left_contexts[::-1]):
                     self.cooccur_counts[(w, c)] += 1 / (k + 1)
@@ -44,7 +44,7 @@ class GloveDataset(Dataset):
         words = Tensor([ex[0] for ex in examples], dtype=np.int)
         contexts = Tensor([ex[1] for ex in examples], dtype=np.int)
         counts = Tensor([ex[2] for ex in examples])
-        return words, contexts, counts
+        return words.int_(), contexts.int_(), counts
 
 
 class GloveModel(nn.Module):

@@ -1,4 +1,4 @@
-name: Unit Test Pipeline
+name: Unit Test
 
 # 当在这些分支上提交时，执行这个workflow
 on:
