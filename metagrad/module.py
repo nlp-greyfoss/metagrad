@@ -536,7 +536,7 @@ class RNNCellBase(Module):
         for weight in self.parameters():
             init.uniform_(weight, -stdv, stdv)
 
-    def __init__(self, input_size, hidden_size: int, num_chunks: int, bias: bool = True, device=None,
+    def __init__(self, input_size, hidden_size: int, num_chunks: int, bias: bool = True, num_directions=1, device=None,
                  dtype=None) -> None:
         '''
         RNN单时间步的抽象
@@ -553,11 +553,11 @@ class RNNCellBase(Module):
         self.hidden_size = hidden_size
 
         # 输入x的线性变换
-        self.input_trans = Linear(input_size, num_chunks * hidden_size, bias=bias, **factory_kwargs)
+        self.input_trans = Linear(num_directions * input_size, num_chunks * hidden_size, bias=bias, **factory_kwargs)
         # 隐藏状态的线性变换
         self.hidden_trans = Linear(hidden_size, num_chunks * hidden_size, bias=bias, **factory_kwargs)
 
-        # self.reset_parameters()
+        self.reset_parameters()
 
     def extra_repr(self) -> str:
         s = 'input_size={input_size}, hidden_size={hidden_size}'
@@ -569,10 +569,11 @@ class RNNCellBase(Module):
 
 
 class RNNCell(RNNCellBase):
-    def __init__(self, input_size, hidden_size: int, bias: bool = True, nonlinearity: str = 'tanh', device=None,
-                 dtype=None):
+    def __init__(self, input_size, hidden_size: int, bias: bool = True, nonlinearity: str = 'tanh', num_directions=1,
+                 device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
-        super(RNNCell, self).__init__(input_size, hidden_size, num_chunks=1, bias=bias, **factory_kwargs)
+        super(RNNCell, self).__init__(input_size, hidden_size, num_chunks=1, bias=bias, num_directions=num_directions,
+                                      **factory_kwargs)
 
         if nonlinearity == 'tanh':
             self.activation = F.tanh
@@ -624,8 +625,7 @@ class GRUCell(RNNCellBase):
 
 class RNNBase(Module):
     def __init__(self, cell: RNNCellBase, input_size: int, hidden_size: int, batch_first: bool = False,
-                 num_layers: int = 1,
-                 bidirectional: bool = False, bias: bool = True, dropout: float = 0, ) -> None:
+                 num_layers: int = 1,bidirectional: bool = False, bias: bool = True, dropout: float = 0, ) -> None:
         '''
            :param input_size:  输入x的特征数
            :param hidden_size: 隐藏状态的特征数
@@ -643,57 +643,72 @@ class RNNBase(Module):
         self.bidirectional = bidirectional
         self.bias = bias
 
+        num_directions = 2 if self.bidirectional else 1
+
         # 支持多层
         self.cells = ModuleList([cell(input_size, hidden_size, bias)] +
-                                [cell(hidden_size, hidden_size, bias) for _ in
+                                [cell(hidden_size, hidden_size, bias, num_directions=num_directions) for _ in
                                  range(num_layers - 1)])
         if self.bidirectional:
             # 支持双向
             self.back_cells = copy.deepcopy(self.cells)
 
         self.dropout = dropout
-        if dropout:
+        if dropout != 0:
             # Dropout层
             self.dropout_layer = Dropout(dropout)
 
-    def _one_directional_op(self, input, cells, n_steps, hs, cs=None, reverse=False):
-        '''
-
-        Args:
-            input: 输入 [n_steps, batch_size, input_size]
-            cells: 正向或反向RNNCell的ModuleList
-            hs: 隐藏状态
-            cs: 单元状态
-            n_steps: 步长
-            reverse: true 反向
-
-        Returns:
-
-        '''
-        output = []
+    def _one_directional_op(self, input, n_steps, cell, h) -> Tuple[Tensor, Tensor]:
+        hs = []
+        # 验证input时间步进行遍历
         for t in range(n_steps):
             inp = input[t]
 
-            for layer in range(self.num_layers):
-                hs[layer] = cells[layer](inp, hs[layer])
-                inp = hs[layer]
-                if self.dropout and layer != self.num_layers - 1:
-                    inp = self.dropout_layer(inp)
+            h = cell(inp, h)
+            hs.append(h)
 
-            # 收集最终层的输出
-            output.append(hs[-1])
+        return h, F.stack(hs)
 
-        output = F.stack(output)  # (n_steps, batch_size, num_directions * hidden_size)
+        # def _one_directional_op(self, input, cells, n_steps, hs, cs=None, reverse=False):
 
-        if reverse:
-            output = F.flip(output, 0)  # 将输出时间步维度逆序，使得时间步t=0上，是看了整个序列的结果。
-
-        if self.batch_first:
-            output = output.transpose((1, 0, 2))
-
-        h_n = F.stack(hs)
-
-        return output, h_n
+    #     '''
+    #
+    #     Args:
+    #         input: 输入 [n_steps, batch_size, input_size]
+    #         cells: 正向或反向RNNCell的ModuleList
+    #         hs: 隐藏状态
+    #         cs: 单元状态
+    #         n_steps: 步长
+    #         reverse: true 反向
+    #
+    #     Returns:
+    #
+    #     '''
+    #     output = []
+    #
+    #     for t in range(n_steps):
+    #         inp = input[t]
+    #
+    #         for layer in range(self.num_layers):
+    #             hs[layer] = cells[layer](inp, hs[layer])
+    #             inp = hs[layer]
+    #             if self.dropout and layer != self.num_layers - 1:
+    #                 inp = self.dropout(inp)
+    #
+    #         # 收集最终层的输出
+    #         output.append(hs[-1])
+    #
+    #     output = F.stack(output)  # (n_steps, batch_size, num_directions * hidden_size)
+    #
+    #     if reverse:
+    #         output = F.flip(output, 0)  # 将输出时间步维度逆序，使得时间步t=0上，是看了整个序列的结果。
+    #
+    #     if self.batch_first:
+    #         output = output.transpose((1, 0, 2))
+    #
+    #     h_n = F.stack(hs)
+    #
+    #     return output, h_n
 
     def _handle_hidden_state(self, input, state):
         is_batched = input.ndim == 3
@@ -749,12 +764,41 @@ class RNNBase(Module):
 
         hs, cs, input, n_steps, batch_size = self._handle_hidden_state(input, state)
 
-        if not self.bidirectional:
-            # 如果是单向的
-            output, state = self._one_directional_op(input, self.cells, n_steps, hs, cs)
-            return output, state
-        else:
-            return self._bidirectional_forward(input, n_steps, hs, cs)
+        h_last_f, h_last_b = [], []
+
+        for layer in range(self.num_layers):
+            h, hs_f = self._one_directional_op(input, n_steps, self.cells[layer], hs[layer])
+
+            h_last_f.append(h)  # 保存最后一个时间步的隐藏状态
+            if self.bidirectional:
+                h, hs_b = self._one_directional_op(F.flip(input, 0), n_steps, self.back_cells[layer],
+                                                   hs[layer + self.num_layers])
+                hs_b = F.flip(hs_b, 0)  # 将输出时间步维度逆序，使得时间步t=0上，是看了整个序列的结果。
+                # 拼接两个方向上的输入
+
+                h_last_b.append(h)
+                input = F.cat([hs_f, hs_b], 2)  #
+            else:
+                input = hs_f  #
+
+            if self.dropout and layer != self.num_layers - 1:
+                input = self.dropout_layer(input)
+
+        output = F.cat([hs_f, hs_b], 2) if self.bidirectional else hs_f
+
+        if self.batch_first:
+            output = output.transpose((1, 0, 2))
+
+        h_n = F.cat([F.stack(h_last_f), F.stack(h_last_b)], 0) if self.bidirectional else F.stack(h_last_f)
+
+        return output, h_n
+
+        # if not self.bidirectional:
+        #     # 如果是单向的
+        #     output, state = self._one_directional_op(input, self.cells, n_steps, hs, cs)
+        #     return output, state
+        # else:
+        #     return self._bidirectional_forward(input, n_steps, hs, cs)
 
     def extra_repr(self) -> str:
         s = 'input_size={input_size}, hidden_size={hidden_size}'
@@ -764,7 +808,7 @@ class RNNBase(Module):
             s += ', bias={bias}'
         if self.batch_first is not False:
             s += ', batch_first={batch_first}'
-        if self.dropout != 0:
+        if self.dropout:
             s += ', dropout={dropout}'
         if self.bidirectional is not False:
             s += ', bidirectional={bidirectional}'
@@ -862,7 +906,7 @@ class LSTM(RNNBase):
                 hs[layer], cs[layer] = cells[layer](inp, (hs[layer], cs[layer]))
                 inp = hs[layer]
                 if self.dropout and layer != self.num_layers - 1:
-                    inp = self.dropout_layer(inp)
+                    inp = self.dropout(inp)
 
             # 收集最终层的输出
             output.append(hs[-1])

@@ -80,10 +80,10 @@ def load_treebank():
     return train_data, test_data, vocab, tag_vocab
 
 
-embedding_dim = 64
-hidden_dim = 32
+embedding_dim = 128
+hidden_dim = 128
 batch_size = 32
-num_epoch = 1
+num_epoch = 10
 n_layers = 2
 dropout = 0.2
 
@@ -96,7 +96,7 @@ test_data_loader = DataLoader(test_dataset, batch_size=batch_size, collate_fn=te
 
 num_class = len(pos_vocab)
 
-mode = 'LSTM' # RNN GRU
+mode = 'RNN'  # RNN GRU
 
 # 加载模型
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
