@@ -644,11 +644,11 @@ class RNNBase(Module):
         self.bidirectional = bidirectional
         self.bias = bias
 
-        num_directions = 2 if self.bidirectional else 1
+        self.num_directions = 2 if self.bidirectional else 1
 
         # 支持多层
         self.cells = ModuleList([cell(input_size, hidden_size, bias)] +
-                                [cell(hidden_size, hidden_size, bias, num_directions=num_directions) for _ in
+                                [cell(hidden_size, hidden_size, bias, num_directions=self.num_directions) for _ in
                                  range(num_layers - 1)])
         if self.bidirectional:
             # 支持双向
@@ -712,13 +712,7 @@ class RNNBase(Module):
     #     return output, h_n
 
     def _handle_hidden_state(self, input, state):
-        is_batched = input.ndim == 3
-        batch_dim = 0 if self.batch_first else 1
-        if not is_batched:
-            # 转换为批大小为1的输入
-            input = input.unsqueeze(batch_dim)
-            if state is not None:
-                state = state.unsqueeze(1)
+        assert input.ndim == 3  # 必须传入批数据，最小批大小为1
 
         if self.batch_first:
             batch_size, n_steps, _ = input.shape
@@ -727,8 +721,7 @@ class RNNBase(Module):
             n_steps, batch_size, _ = input.shape
 
         if state is None:
-            num_directions = 2 if self.bidirectional else 1
-            h = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), dtype=input.dtype,
+            h = Tensor.zeros((self.num_layers * self.num_directions, batch_size, self.hidden_size), dtype=input.dtype,
                              device=input.device)
         else:
             h = state
@@ -785,21 +778,17 @@ class RNNBase(Module):
             if self.dropout and layer != self.num_layers - 1:
                 input = self.dropout_layer(input)
 
-        output = F.cat([hs_f, hs_b], 2) if self.bidirectional else hs_f
+        if self.bidirectional:
+            output = F.cat([hs_f, hs_b], 2)
+            h_n = F.cat([F.stack(h_last_f), F.stack(h_last_b)], 0)
+        else:
+            output = hs_f
+            h_n = F.stack(h_last_f)
 
         if self.batch_first:
             output = output.transpose((1, 0, 2))
 
-        h_n = F.cat([F.stack(h_last_f), F.stack(h_last_b)], 0) if self.bidirectional else F.stack(h_last_f)
-
         return output, h_n
-
-        # if not self.bidirectional:
-        #     # 如果是单向的
-        #     output, state = self._one_directional_op(input, self.cells, n_steps, hs, cs)
-        #     return output, state
-        # else:
-        #     return self._bidirectional_forward(input, n_steps, hs, cs)
 
     def extra_repr(self) -> str:
         s = 'input_size={input_size}, hidden_size={hidden_size}'
