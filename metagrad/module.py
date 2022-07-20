@@ -605,9 +605,10 @@ class LSTMCell(RNNCellBase):
 
 
 class GRUCell(RNNCellBase):
-    def __init__(self, input_size, hidden_size: int, bias: bool = True, device=None, dtype=None):
+    def __init__(self, input_size, hidden_size: int, bias: bool = True, num_directions=1, device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
-        super(GRUCell, self).__init__(input_size, hidden_size, num_chunks=3, bias=bias, **factory_kwargs)
+        super(GRUCell, self).__init__(input_size, hidden_size, num_chunks=3, bias=bias, num_directions=num_directions,
+                                      **factory_kwargs)
 
     def forward(self, x: Tensor, state: Tensor) -> Tensor:
         input_trans = self.input_trans(x)
@@ -625,7 +626,7 @@ class GRUCell(RNNCellBase):
 
 class RNNBase(Module):
     def __init__(self, cell: RNNCellBase, input_size: int, hidden_size: int, batch_first: bool = False,
-                 num_layers: int = 1,bidirectional: bool = False, bias: bool = True, dropout: float = 0, ) -> None:
+                 num_layers: int = 1, bidirectional: bool = False, bias: bool = True, dropout: float = 0, ) -> None:
         '''
            :param input_size:  输入x的特征数
            :param hidden_size: 隐藏状态的特征数
@@ -660,7 +661,7 @@ class RNNBase(Module):
 
     def _one_directional_op(self, input, n_steps, cell, h) -> Tuple[Tensor, Tensor]:
         hs = []
-        # 验证input时间步进行遍历
+        # 沿着input时间步进行遍历
         for t in range(n_steps):
             inp = input[t]
 
