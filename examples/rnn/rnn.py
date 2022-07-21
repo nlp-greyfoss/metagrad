@@ -96,11 +96,11 @@ test_data_loader = DataLoader(test_dataset, batch_size=batch_size, collate_fn=te
 
 num_class = len(pos_vocab)
 
-mode = 'GRU'  # RNN GRU
+mode = 'LSTM'  # RNN GRU
 
 # 加载模型
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
-model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=True, mode=mode)
+model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=False, mode=mode)
 model.to(device)
 
 # 训练过程
@@ -135,7 +135,3 @@ for batch in tqdm(test_data_loader, desc=f"Testing"):
 # 输出在测试集上的准确率
 print(f"Acc: {acc / total:.2f}")
 print(f'Cost:{(time.time() - start)}')
-# 优化版 BiGRU:
-# 优化版 GRU: 323.84 0.56
-# 原版  BiGRU:
-# 原版 GRU: 327.40 0.56

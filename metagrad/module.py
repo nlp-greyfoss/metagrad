@@ -6,6 +6,8 @@ from collections import OrderedDict
 from itertools import chain, islice
 from typing import List, Optional, Tuple, Dict, Iterable, Union, Iterator, Set
 
+import numpy as np
+
 import metagrad.functions as F
 from metagrad import init
 from metagrad.paramater import Parameter
@@ -580,15 +582,16 @@ class RNNCell(RNNCellBase):
         else:
             self.activation = F.relu
 
-    def forward(self, x: Tensor, h: Tensor, c: Tensor = None) -> Tensor:
+    def forward(self, x: Tensor, h: Tensor, c: Tensor = None) -> Tuple[Tensor, None]:
         h_next = self.activation(self.input_trans(x) + self.hidden_trans(h))
-        return h_next
+        return h_next, None
 
 
 class LSTMCell(RNNCellBase):
-    def __init__(self, input_size, hidden_size: int, bias: bool = True, device=None, dtype=None):
+    def __init__(self, input_size, hidden_size: int, bias: bool = True, num_directions=1, device=None, dtype=None):
         factory_kwargs = {'device': device, 'dtype': dtype}
-        super(LSTMCell, self).__init__(input_size, hidden_size, num_chunks=4, bias=bias, **factory_kwargs)
+        super(LSTMCell, self).__init__(input_size, hidden_size, num_chunks=4, bias=bias, num_directions=num_directions,
+                                       **factory_kwargs)
 
     def forward(self, x: Tensor, h: Tensor, c: Tensor) -> Tuple[Tensor, Tensor]:
         ifgo = self.input_trans(x) + self.hidden_trans(h)
@@ -609,7 +612,7 @@ class GRUCell(RNNCellBase):
         super(GRUCell, self).__init__(input_size, hidden_size, num_chunks=3, bias=bias, num_directions=num_directions,
                                       **factory_kwargs)
 
-    def forward(self, x: Tensor, h: Tensor, c: Tensor = None) -> Tensor:
+    def forward(self, x: Tensor, h: Tensor, c: Tensor = None) -> Tuple[Tensor, None]:
         input_trans = self.input_trans(x)
         hidden_trans = self.hidden_trans(h)
 
@@ -620,7 +623,7 @@ class GRUCell(RNNCellBase):
         z = F.sigmoid(i_z + h_z)  # 更新门
 
         h_next = z * h + (1 - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
-        return h_next
+        return h_next, None
 
 
 class RNNBase(Module):
@@ -659,62 +662,15 @@ class RNNBase(Module):
             self.dropout_layer = Dropout(dropout)
 
     def _one_directional_op(self, input, n_steps, cell, h, c) -> Tuple[Tensor, Tensor, Tensor]:
-        hs, cs = [], []
+        hs = []
         # 沿着input时间步进行遍历
         for t in range(n_steps):
             inp = input[t]
 
             h, c = cell(inp, h, c)
             hs.append(h)
-            cs.append(c)
 
-        if c is not None:
-            c_n = F.stack(cs)
-        else:
-            c_n = None
-
-        return h, F.stack(hs), c_n
-
-        # def _one_directional_op(self, input, cells, n_steps, hs, cs=None, reverse=False):
-
-    #     '''
-    #
-    #     Args:
-    #         input: 输入 [n_steps, batch_size, input_size]
-    #         cells: 正向或反向RNNCell的ModuleList
-    #         hs: 隐藏状态
-    #         cs: 单元状态
-    #         n_steps: 步长
-    #         reverse: true 反向
-    #
-    #     Returns:
-    #
-    #     '''
-    #     output = []
-    #
-    #     for t in range(n_steps):
-    #         inp = input[t]
-    #
-    #         for layer in range(self.num_layers):
-    #             hs[layer] = cells[layer](inp, hs[layer])
-    #             inp = hs[layer]
-    #             if self.dropout and layer != self.num_layers - 1:
-    #                 inp = self.dropout(inp)
-    #
-    #         # 收集最终层的输出
-    #         output.append(hs[-1])
-    #
-    #     output = F.stack(output)  # (n_steps, batch_size, num_directions * hidden_size)
-    #
-    #     if reverse:
-    #         output = F.flip(output, 0)  # 将输出时间步维度逆序，使得时间步t=0上，是看了整个序列的结果。
-    #
-    #     if self.batch_first:
-    #         output = output.transpose((1, 0, 2))
-    #
-    #     h_n = F.stack(hs)
-    #
-    #     return output, h_n
+        return h, c, F.stack(hs)
 
     def _handle_hidden_state(self, input, state):
         assert input.ndim == 3  # 必须传入批数据，最小批大小为1
@@ -736,18 +692,7 @@ class RNNBase(Module):
 
         return hs, [None] * len(hs), input, n_steps, batch_size
 
-    def _bidirectional_forward(self, input, n_steps, hs, cs=None):
-        output_f, h_n_f = self._one_directional_op(input, self.cells, n_steps, hs[:self.num_layers])
-
-        output_b, h_n_b = self._one_directional_op(F.flip(input, 0), self.back_cells, n_steps, hs[self.num_layers:],
-                                                   reverse=True)
-
-        output = F.cat([output_f, output_b], 2)
-        h_n = F.cat([h_n_f, h_n_b], 0)
-
-        return output, h_n
-
-    def forward(self, input: Tensor, state: Tensor) -> Tuple[Tensor, Union[Tensor, Tuple[Tensor, Tensor]]]:
+    def forward(self, input: Tensor, state: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         '''
         RNN的前向传播
         :param input: 形状 [n_steps, batch_size, input_size] 若batch_first=False
@@ -759,41 +704,51 @@ class RNNBase(Module):
                     (batch_size, n_steps, num_directions * hidden_size)若batch_first=True
                     包含每个时间步最后一层(多层RNN)的输出h_t
             h_n: (num_directions * num_layers, batch_size, hidden_size) 包含最终隐藏状态
+            c_n: (num_directions * num_layers, batch_size, hidden_size) 包含最终单元状态(LSTM)；非LSTM为None
+
         '''
 
         hs, cs, input, n_steps, batch_size = self._handle_hidden_state(input, state)
 
-        h_last_f, h_last_b = [], []
+        # 正向得到的h_n，反向得到的h_n,正向得到的c_n，反向得到的c_n
+        h_n_f, h_n_b, c_n_f, c_n_b = [], [], [], []
 
         for layer in range(self.num_layers):
-            h, hs_f, cs_f = self._one_directional_op(input, n_steps, self.cells[layer], hs[layer], cs[layer])
+            h, c, hs_f = self._one_directional_op(input, n_steps, self.cells[layer], hs[layer], cs[layer])
 
-            h_last_f.append(h)  # 保存最后一个时间步的隐藏状态
+            h_n_f.append(h)  # 保存最后一个时间步的隐藏状态
+            c_n_f.append(c)
             if self.bidirectional:
-                h, hs_b, cs_b = self._one_directional_op(F.flip(input, 0), n_steps, self.back_cells[layer],
-                                                         hs[layer + self.num_layers], cs[layer + self.num_layers])
+                h, c, hs_b = self._one_directional_op(F.flip(input, 0), n_steps, self.back_cells[layer],
+                                                      hs[layer + self.num_layers], cs[layer + self.num_layers])
                 hs_b = F.flip(hs_b, 0)  # 将输出时间步维度逆序，使得时间步t=0上，是看了整个序列的结果。
                 # 拼接两个方向上的输入
 
-                h_last_b.append(h)
-                input = F.cat([hs_f, hs_b], 2)  #
+                h_n_b.append(h)
+                c_n_b.append(c)
+                input = F.cat([hs_f, hs_b], 2)  # (n_steps, batch_size, num_directions * hidden_size)
             else:
-                input = hs_f  #
+                input = hs_f  # (n_steps, batch_size, num_directions * hidden_size)
 
+            # 在第1层之后，最后一层之前需要经过dropout
             if self.dropout and layer != self.num_layers - 1:
                 input = self.dropout_layer(input)
 
+        output = input  # (n_steps, batch_size, num_directions * hidden_size) 最后一层最后计算的输入，就是它的输出
+        c_n = None
         if self.bidirectional:
-            output = F.cat([hs_f, hs_b], 2)
-            h_n = F.cat([F.stack(h_last_f), F.stack(h_last_b)], 0)
+            h_n = F.cat([F.stack(h_n_f), F.stack(h_n_b)], 0)
+            if c is not None:
+                c_n = F.cat([F.stack(c_n_f), F.stack(c_n_b)], 0)
         else:
-            output = hs_f
-            h_n = F.stack(h_last_f)
+            h_n = F.stack(h_n_f)
+            if c is not None:
+                c_n = F.stack(c_n_f)
 
         if self.batch_first:
             output = output.transpose((1, 0, 2))
 
-        return output, h_n
+        return output, h_n, c_n
 
     def extra_repr(self) -> str:
         s = 'input_size={input_size}, hidden_size={hidden_size}'
@@ -824,6 +779,10 @@ class RNN(RNNBase):
         '''
         super(RNN, self).__init__(RNNCell, *args, **kwargs)
 
+    def forward(self, input: Tensor, state: Tensor) -> Tuple[Tensor, Tensor]:
+        output, h_n, _ = super().forward(input, state)
+        return output, h_n
+
 
 class GRU(RNNBase):
     def __init__(self, *args, **kwargs):
@@ -837,6 +796,10 @@ class GRU(RNNBase):
         :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
         '''
         super(GRU, self).__init__(GRUCell, *args, **kwargs)
+
+    def forward(self, input: Tensor, state: Tensor) -> Tuple[Tensor, Tensor]:
+        output, h_n, _ = super().forward(input, state)
+        return output, h_n
 
 
 class LSTM(RNNBase):
@@ -852,14 +815,7 @@ class LSTM(RNNBase):
         if state is not None:
             h_0, c_0 = state
 
-        is_batched = input.ndim == 3
-        batch_dim = 0 if self.batch_first else 1
-        if not is_batched:
-            # 转换为批大小为1的输入
-            input = input.unsqueeze(batch_dim)
-            if state is not None:
-                h_0 = h_0.unsqueeze(1)
-                c_0 = c_0.unsqueeze(1)
+        assert input.ndim == 3  # 必须传入批数据，最小批大小为1
 
         if self.batch_first:
             batch_size, n_steps, _ = input.shape
@@ -879,56 +835,6 @@ class LSTM(RNNBase):
 
         return hs, cs, input, n_steps, batch_size
 
-    def _one_directional_op(self, input, cells, n_steps, hs, cs, reverse=False):
-        '''
-
-        Args:
-            input: 输入 [n_steps, batch_size, input_size]
-            cells: 正向或反向RNNCell的ModuleList
-            n_steps: 步长
-            hs: 隐藏状态
-            cs: 单元状态
-            reverse: true 反向
-
-        Returns:
-
-        '''
-        output = []
-        for t in range(n_steps):
-            inp = input[t]
-
-            for layer in range(self.num_layers):
-                hs[layer], cs[layer] = cells[layer](inp, (hs[layer], cs[layer]))
-                inp = hs[layer]
-                if self.dropout and layer != self.num_layers - 1:
-                    inp = self.dropout(inp)
-
-            # 收集最终层的输出
-            output.append(hs[-1])
-
-        output = F.stack(output)  # (n_steps, batch_size, num_directions * hidden_size)
-
-        if reverse:
-            output = F.flip(output, 0)  # 将输出时间步维度逆序，使得时间步t=0上，是看了整个序列的结果。
-
-        if self.batch_first:
-            output = output.transpose((1, 0, 2))
-
-        h_n = F.stack(hs)
-        c_n = F.stack(cs)
-
-        return output, (h_n, c_n)
-
-    def _bidirectional_forward(self, input, n_steps, hs, cs):
-        output_f, (h_n_f, c_n_f) = self._one_directional_op(input, self.cells, n_steps,
-                                                            hs[:self.num_layers], cs[:self.num_layers])
-
-        output_b, (h_n_b, c_n_b) = self._one_directional_op(F.flip(input, 0), self.back_cells, n_steps,
-                                                            hs[self.num_layers:], cs[self.num_layers:],
-                                                            reverse=True)
-
-        output = F.cat([output_f, output_b], 2)
-        h_n = F.cat([h_n_f, h_n_b], 0)
-        c_n = F.cat([c_n_f, c_n_b], 0)
-
+    def forward(self, input: Tensor, state: Tensor) -> Tuple[Tensor, Tuple[Tensor, Tensor]]:
+        output, h_n, c_n = super().forward(input, state)
         return output, (h_n, c_n)
