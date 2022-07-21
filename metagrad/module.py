@@ -538,8 +538,8 @@ class RNNCellBase(Module):
         for weight in self.parameters():
             init.uniform_(weight, -stdv, stdv)
 
-    def __init__(self, input_size, hidden_size: int, num_chunks: int, bias: bool = True, num_directions=1, device=None,
-                 dtype=None) -> None:
+    def __init__(self, input_size, hidden_size: int, num_chunks: int, bias: bool = True, num_directions=1,
+                 reset_parameters=True, device=None, dtype=None) -> None:
         '''
         RNN单时间步的抽象
         :param input_size: 输入x的特征数
@@ -558,8 +558,8 @@ class RNNCellBase(Module):
         self.input_trans = Linear(num_directions * input_size, num_chunks * hidden_size, bias=bias, **factory_kwargs)
         # 隐藏状态的线性变换
         self.hidden_trans = Linear(hidden_size, num_chunks * hidden_size, bias=bias, **factory_kwargs)
-
-        self.reset_parameters()
+        if reset_parameters:
+            self.reset_parameters()
 
     def extra_repr(self) -> str:
         s = 'input_size={input_size}, hidden_size={hidden_size}'
@@ -572,8 +572,8 @@ class RNNCellBase(Module):
 
 class RNNCell(RNNCellBase):
     def __init__(self, input_size, hidden_size: int, bias: bool = True, nonlinearity: str = 'tanh', num_directions=1,
-                 device=None, dtype=None):
-        factory_kwargs = {'device': device, 'dtype': dtype}
+                 reset_parameters=True, device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype, 'reset_parameters': reset_parameters}
         super(RNNCell, self).__init__(input_size, hidden_size, num_chunks=1, bias=bias, num_directions=num_directions,
                                       **factory_kwargs)
 
@@ -588,8 +588,9 @@ class RNNCell(RNNCellBase):
 
 
 class LSTMCell(RNNCellBase):
-    def __init__(self, input_size, hidden_size: int, bias: bool = True, num_directions=1, device=None, dtype=None):
-        factory_kwargs = {'device': device, 'dtype': dtype}
+    def __init__(self, input_size, hidden_size: int, bias: bool = True, num_directions=1, reset_parameters=True,
+                 device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype, 'reset_parameters': reset_parameters}
         super(LSTMCell, self).__init__(input_size, hidden_size, num_chunks=4, bias=bias, num_directions=num_directions,
                                        **factory_kwargs)
 
@@ -607,8 +608,9 @@ class LSTMCell(RNNCellBase):
 
 
 class GRUCell(RNNCellBase):
-    def __init__(self, input_size, hidden_size: int, bias: bool = True, num_directions=1, device=None, dtype=None):
-        factory_kwargs = {'device': device, 'dtype': dtype}
+    def __init__(self, input_size, hidden_size: int, bias: bool = True, num_directions=1, reset_parameters=True,
+                 device=None, dtype=None):
+        factory_kwargs = {'device': device, 'dtype': dtype, 'reset_parameters': reset_parameters}
         super(GRUCell, self).__init__(input_size, hidden_size, num_chunks=3, bias=bias, num_directions=num_directions,
                                       **factory_kwargs)
 
@@ -628,7 +630,8 @@ class GRUCell(RNNCellBase):
 
 class RNNBase(Module):
     def __init__(self, cell: RNNCellBase, input_size: int, hidden_size: int, batch_first: bool = False,
-                 num_layers: int = 1, bidirectional: bool = False, bias: bool = True, dropout: float = 0, ) -> None:
+                 num_layers: int = 1, bidirectional: bool = False, bias: bool = True, dropout: float = 0,
+                 reset_parameters=True, device=None, dtype=None) -> None:
         '''
            :param input_size:  输入x的特征数
            :param hidden_size: 隐藏状态的特征数
@@ -637,8 +640,14 @@ class RNNBase(Module):
            :param bidirectional: 是否为双向
            :param bias: 线性层是否包含偏置
            :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
+           :param reset_parameters: 是否执行reset_parameters
+           :param device:
+           :param dtype:
        '''
         super(RNNBase, self).__init__()
+
+        factory_kwargs = {'device': device, 'dtype': dtype, 'reset_parameters': reset_parameters}
+
         self.num_layers = num_layers
         self.hidden_size = hidden_size
         self.input_size = input_size
@@ -649,8 +658,9 @@ class RNNBase(Module):
         self.num_directions = 2 if self.bidirectional else 1
 
         # 支持多层
-        self.cells = ModuleList([cell(input_size, hidden_size, bias)] +
-                                [cell(hidden_size, hidden_size, bias, num_directions=self.num_directions) for _ in
+        self.cells = ModuleList([cell(input_size, hidden_size, bias, **factory_kwargs)] +
+                                [cell(hidden_size, hidden_size, bias, num_directions=self.num_directions,
+                                      **factory_kwargs) for _ in
                                  range(num_layers - 1)])
         if self.bidirectional:
             # 支持双向

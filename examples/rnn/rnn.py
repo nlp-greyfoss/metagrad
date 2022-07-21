@@ -46,7 +46,7 @@ class RNN(nn.Module):
                               bidirectional=bidirectional)
         elif mode == 'LSTM':
             self.rnn = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
-                               bidirectional=bidirectional)
+                               bidirectional=bidirectional, reset_parameters=False)
         else:
             self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
                               bidirectional=bidirectional)
@@ -100,7 +100,7 @@ mode = 'LSTM'  # RNN GRU
 
 # 加载模型
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
-model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=False, mode=mode)
+model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=True, mode=mode)
 model.to(device)
 
 # 训练过程
