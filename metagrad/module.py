@@ -789,7 +789,7 @@ class RNN(RNNBase):
         '''
         super(RNN, self).__init__(RNNCell, *args, **kwargs)
 
-    def forward(self, input: Tensor, state: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input: Tensor, state: Tensor = None) -> Tuple[Tensor, Tensor]:
         output, h_n, _ = super().forward(input, state)
         return output, h_n
 
@@ -807,7 +807,7 @@ class GRU(RNNBase):
         '''
         super(GRU, self).__init__(GRUCell, *args, **kwargs)
 
-    def forward(self, input: Tensor, state: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input: Tensor, state: Tensor = None) -> Tuple[Tensor, Tensor]:
         output, h_n, _ = super().forward(input, state)
         return output, h_n
 
