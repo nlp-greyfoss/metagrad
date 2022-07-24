@@ -35,7 +35,9 @@ class Function:
 
         requires_grad = any([t.requires_grad for t in xs])
 
+        return_tuple = True
         if not isinstance(ys, tuple):
+            return_tuple = False
             ys = (ys,)
 
         outputs = [Tensor(y, device=xs[0].device, requires_grad=requires_grad) for y in ys]
@@ -48,7 +50,9 @@ class Function:
             self.outputs = [weakref.ref(output) for output in outputs]  # 通过弱引用记录输出
 
         # 返回多个则通过元组
-        return tuple(outputs) if len(outputs) > 1 else outputs[0]
+        if return_tuple or len(outputs) > 1:
+            return tuple(outputs)
+        return outputs[0]
 
 
 def unbroadcast(grad: NdArray, in_shape: Tuple) -> NdArray:
