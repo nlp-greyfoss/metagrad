@@ -11,7 +11,7 @@ def test_simple_nll_loss():
     t = np.array([3, 0]).astype(np.int32)
 
     mx = Tensor(x, requires_grad=True)
-    mt = Tensor(np.eye(x.shape[-1])[t])  # 需要转换成one-hot向量
+    mt = Tensor(np.eye(x.shape[-1], dtype=np.int32)[t])  # 需要转换成one-hot向量
 
     tx = torch.tensor(x, dtype=torch.float32, requires_grad=True)
     tt = torch.tensor(t, dtype=torch.int64)
@@ -22,7 +22,7 @@ def test_simple_nll_loss():
     # 先调用各自的log_softmax转换为对数概率
     ml = my_loss(F.log_softmax(mx), mt)
     tl = torch_loss(torch.log_softmax(tx, dim=-1, dtype=torch.float32), tt)
-    assert np.allclose(ml.item(),  tl.item())
+    assert np.allclose(ml.item(), tl.item())
 
     ml.backward()
     tl.backward()
@@ -36,7 +36,7 @@ def test_nll_loss():
     t = np.random.randint(0, CLS_NUM, (N,))
 
     mx = Tensor(x, requires_grad=True)
-    mt = Tensor(np.eye(x.shape[-1])[t])  # 需要转换成one-hot向量
+    mt = Tensor(np.eye(x.shape[-1], dtype=np.int32)[t])  # 需要转换成one-hot向量
 
     tx = torch.tensor(x, dtype=torch.float32, requires_grad=True)
     tt = torch.tensor(t, dtype=torch.int64)
@@ -48,7 +48,7 @@ def test_nll_loss():
     ml = my_loss(F.log_softmax(mx), mt)
     tl = torch_loss(torch.log_softmax(tx, dim=-1, dtype=torch.float32), tt)
 
-    assert np.allclose(ml.item(),  tl.item())
+    assert np.allclose(ml.item(), tl.item())
 
     ml.backward()
     tl.backward()
@@ -68,12 +68,10 @@ def test_simple_nll_loss_class_indices():
 
     my_loss = NLLLoss()
     torch_loss = torch.nn.NLLLoss()
-    print(F.softmax(mx))
-    print(F.log_softmax(mx))
     # 先调用各自的log_softmax转换为对数概率
     ml = my_loss(F.log_softmax(mx), mt)
     tl = torch_loss(torch.log_softmax(tx, dim=-1, dtype=torch.float32), tt)
-    assert np.allclose(ml.item(),  tl.item())
+    assert np.allclose(ml.item(), tl.item())
 
     ml.backward()
     tl.backward()

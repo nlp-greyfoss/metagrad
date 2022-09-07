@@ -63,6 +63,7 @@ def ensure_tensor(tensoralbe: Tensorable, device=None) -> "Tensor":
     '''
     if isinstance(tensoralbe, Tensor):
         return tensoralbe
+
     return Tensor(tensoralbe, device=device)
 
 
@@ -277,7 +278,7 @@ class Tensor:
 
     def unchain(self):
         self.creator = None
-        
+
     def int_(self) -> "Tensor":
         self.data = self.data.astype(np.int16)
         return self
@@ -344,7 +345,6 @@ class Tensor:
     def arange(cls, stop, start=0, step=1, dtype=None, device=None, **kwargs) -> "Tensor":
         device = get_device(device)
         xp = device.xp
-        stop, start = start, stop
         return cls(xp.arange(start=start, stop=stop, step=step).astype(dtype), device=device, **kwargs)
 
     @classmethod
@@ -401,9 +401,26 @@ class Tensor:
         # self._grad = None
         return self
 
+    def __ne__(self, other):
+        return Tensor(self.data != ensure_tensor(other, self.device).data)
+
     @property
     def T(self) -> "Tensor":
         return self.transpose(axes=None)
+
+    def _get_ops(self, name):
+        # 调用动态绑定的方法
+        return self.__getattribute__(name)
+
+    def view(self, *shape):
+
+        if isinstance(shape[0], tuple):
+            shape = shape[0]
+
+        return self._get_ops('reshape')(shape)
+
+    def expand_dims(self, axis: int):
+        return self._get_ops('expanddims')(axis)
 
     def backward(self, grad: "Tensor" = None, retain_grad=False, create_graph=False) -> None:
         '''

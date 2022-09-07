@@ -629,17 +629,18 @@ class GRUCell(RNNCellBase):
 
 
 class RNNBase(Module):
-    def __init__(self, cell: RNNCellBase, input_size: int, hidden_size: int, batch_first: bool = False,
-                 num_layers: int = 1, bidirectional: bool = False, bias: bool = True, dropout: float = 0,
+    def __init__(self, cell: RNNCellBase, input_size: int, hidden_size: int,num_layers: int = 1,bias: bool = True,
+                 batch_first: bool = False,dropout: float = 0, bidirectional: bool = False,
                  reset_parameters=True, device=None, dtype=None) -> None:
         '''
+           :param cell:  RNN单元类型
            :param input_size:  输入x的特征数
            :param hidden_size: 隐藏状态的特征数
-           :param batch_first: 批次维度是否在前面
            :param num_layers: 层数
-           :param bidirectional: 是否为双向
            :param bias: 线性层是否包含偏置
+           :param batch_first: 批次维度是否在前面
            :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
+           :param bidirectional: 是否为双向
            :param reset_parameters: 是否执行reset_parameters
            :param device:
            :param dtype:
@@ -648,12 +649,18 @@ class RNNBase(Module):
 
         factory_kwargs = {'device': device, 'dtype': dtype, 'reset_parameters': reset_parameters}
 
-        self.num_layers = num_layers
-        self.hidden_size = hidden_size
         self.input_size = input_size
-        self.batch_first = batch_first
-        self.bidirectional = bidirectional
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
         self.bias = bias
+        self.batch_first = batch_first
+
+        self.dropout = dropout
+        if dropout != 0:
+            # Dropout层
+            self.dropout_layer = Dropout(dropout)
+
+        self.bidirectional = bidirectional
 
         self.num_directions = 2 if self.bidirectional else 1
 
@@ -666,10 +673,7 @@ class RNNBase(Module):
             # 支持双向
             self.back_cells = copy.deepcopy(self.cells)
 
-        self.dropout = dropout
-        if dropout != 0:
-            # Dropout层
-            self.dropout_layer = Dropout(dropout)
+
 
     def _one_directional_op(self, input, n_steps, cell, h, c) -> Tuple[Tensor, Tensor, Tensor]:
         hs = []
@@ -780,12 +784,12 @@ class RNN(RNNBase):
         '''
         :param input_size:  输入x的特征数
         :param hidden_size: 隐藏状态的特征数
-        :param batch_first:
         :param num_layers: 层数
-        :param bidirectional: 是否为双向
-        :param bias: 线性层是否包含偏置
-        :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
         :param nonlinearity: 非线性激活函数 tanh | relu
+        :param bias: 线性层是否包含偏置
+        :param batch_first:
+        :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
+        :param bidirectional: 是否为双向
         '''
         super(RNN, self).__init__(RNNCell, *args, **kwargs)
 
@@ -799,11 +803,11 @@ class GRU(RNNBase):
         '''
         :param input_size:  输入x的特征数
         :param hidden_size: 隐藏状态的特征数
-        :param batch_first:
         :param num_layers: 层数
-        :param bidirectional: 是否为双向
         :param bias: 线性层是否包含偏置
+        :param batch_first:
         :param dropout: 用于多层堆叠RNN，默认为0代表不使用dropout
+        :param bidirectional: 是否为双向
         '''
         super(GRU, self).__init__(GRUCell, *args, **kwargs)
 

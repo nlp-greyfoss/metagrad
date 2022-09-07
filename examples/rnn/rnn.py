@@ -42,13 +42,13 @@ class RNN(nn.Module):
         super(RNN, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim)
         if mode == 'GRU':
-            self.rnn = nn.GRU(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
+            self.rnn = nn.GRU(embedding_dim, hidden_dim, n_layers, batch_first=True, dropout=dropout,
                               bidirectional=bidirectional)
         elif mode == 'LSTM':
-            self.rnn = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
+            self.rnn = nn.LSTM(embedding_dim, hidden_dim, n_layers, batch_first=True, dropout=dropout,
                                bidirectional=bidirectional, reset_parameters=False)
         else:
-            self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True, num_layers=n_layers, dropout=dropout,
+            self.rnn = nn.RNN(embedding_dim, hidden_dim, n_layers, batch_first=True, dropout=dropout,
                               bidirectional=bidirectional, reset_parameters=False)
 
         print('model:', self.rnn)
