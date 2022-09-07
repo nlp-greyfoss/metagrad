@@ -11,6 +11,7 @@ import metagrad.module as nn
 from metagrad.dataloader import DataLoader
 from metagrad.optim import Optimizer
 from metagrad.tensor import Tensor
+import metagrad.functions as F
 
 
 def set_figsize(figsize=(4.9, 3.5)):
@@ -322,3 +323,28 @@ def unpad_sequence(padded_sequences, lengths):
         unpadded_sequences.append(unpacked_seq)
 
     return unpadded_sequences
+
+
+def clip_grad_norm_(parameters, max_norm: float, norm_type: float = 2.0):
+    if isinstance(parameters, Tensor):
+        parameters = [parameters]
+
+    grads = [p.grad for p in parameters if p.grad is not None]
+    max_norm = float(max_norm)
+    norm_type = float(norm_type)
+    if len(grads) == 0:
+        return Tensor(0.)
+
+    device = grads[0].device
+
+    if norm_type == float('inf'):
+        norms = [g.abs().max().to(device) for g in grads]
+        total_norm = norms[0] if len(norms) == 1 else F.stack(norms).max()
+    else:
+        total_norm = F.norm(F.stack([F.norm(g, norm_type).to(device) for g in grads]), norm_type)
+
+    clip_coef = max_norm / (total_norm + 1e-6)
+    clip_coef_clamped = F.clamp(clip_coef, max=1.0)
+    for g in grads:
+        g.mul_(clip_coef_clamped.to(g.device))
+    return total_norm

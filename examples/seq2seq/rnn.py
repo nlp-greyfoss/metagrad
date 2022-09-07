@@ -54,7 +54,7 @@ class RNNDecoder(Decoder):
         super(RNNDecoder, self).__init__(**kwargs)
         self.embedding = nn.Embedding(vocab_size, embed_size)
         # embed_size + num_hiddens 为了处理拼接后的维度，见forward函数中的注释
-        self.rnn = nn.GRU(embed_size + num_hiddens, num_hiddens, num_layers, batch_first=False, dropout=dropout)
+        self.rnn = nn.GRU(embed_size, num_hiddens, num_layers, batch_first=False, dropout=dropout)
         # 将隐状态转换为词典大小维度
         self.dense = nn.Linear(num_hiddens, vocab_size)
 
@@ -66,13 +66,13 @@ class RNNDecoder(Decoder):
 
         # 将最顶层的上下文向量广播成与X相同的时间步，其他维度上只复制1次(保持不变)
         # 形状 (num_layers, batch_size, num_hiddens ) => (num_steps, batch_size, num_hiddens)
-        context = state[-1].repeat((X.shape[0], 1, 1))
+        #context = state[-1].repeat((X.shape[0], 1, 1))
         # 为了每个解码时间步都能看到上下文，拼接context与X
         # (num_steps, batch_size, embed_size) + (num_steps, batch_size, num_hiddens)
         #                           => (num_steps, batch_size, embed_size + num_hiddens)
-        concat_context = F.cat((X, context), 2)
+        #concat_context = F.cat((X, context), 2)
 
-        output, state = self.rnn(concat_context, state)
+        output, state = self.rnn(X, state)
         output = self.dense(output).permute((1, 0, 2))  # (batch_size, num_steps, vocab_size)
 
         return output, state
@@ -95,8 +95,10 @@ class MaskedSoftmaxCELoss(CrossEntropyLoss):
         self.reduction = 'none'
         unweighted_loss = super(MaskedSoftmaxCELoss, self).forward(pred, label)
         label_valid = label != padding_value
+        with no_grad():
+            num_tokens = label_valid.sum().item()
 
-        weighted_loss = unweighted_loss * label_valid
+        weighted_loss = ( unweighted_loss * label_valid ).sum() / float(num_tokens)
         return weighted_loss
 
 
@@ -108,6 +110,9 @@ def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
     loss = MaskedSoftmaxCELoss()
     net.train()
     animator = Animator(xlabel='epoch', ylabel='loss', xlim=[10, num_epochs])
+
+    PAD_IDX = tgt_vocab[PAD_TOKEN]
+
     for epoch in tqdm(range(num_epochs)):
         timer = Timer()
         metric = Accumulator(2)  # 训练损失总和，单词数量
@@ -120,20 +125,20 @@ def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
             Y = Y.view(-1)
             output_dim = Y_hat.shape[-1]
             Y_hat = Y_hat.view(-1, output_dim)
+            num_tokens = (Y != PAD_IDX).sum()
+            l = loss(Y_hat, Y, PAD_IDX)
 
-            l = loss(Y_hat, Y, tgt_vocab[PAD_TOKEN])
-            l.sum().backward()
-            num_tokens = (Y != 0).sum()
+            l.backward()
             optimizer.step()
             with no_grad():
-                metric.add(l.sum().item(), num_tokens.item())
+                metric.add(l.item(), num_tokens.item())
 
         if (epoch + 1) % 10 == 0:
-            animator.add(epoch + 1, (metric[0] / metric[1],))
-            print(f'loss {metric[0] / metric[1]:.3f}, {metric[1] / timer.stop():.1f} '
+            animator.add(epoch + 1, metric[0] )
+            print(f'loss {metric[0] :.3f}, {metric[1] / timer.stop():.1f} '
                   f'tokens/sec on {str(device)}')
 
-    print(f'loss {metric[0] / metric[1]:.3f}, {metric[1] / timer.stop():.1f} '
+    print(f'loss {metric[0] :.3f}, {metric[1] / timer.stop():.1f} '
           f'tokens/sec on {str(device)}')
     animator.show()
 
