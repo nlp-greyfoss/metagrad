@@ -95,10 +95,11 @@ class MaskedSoftmaxCELoss(CrossEntropyLoss):
         self.reduction = 'none'
         unweighted_loss = super(MaskedSoftmaxCELoss, self).forward(pred, label)
         label_valid = label != padding_value
-        with no_grad():
-            num_tokens = label_valid.sum().item()
+        # with no_grad():
+        #    num_tokens = label_valid.sum().item()
 
-        weighted_loss = (unweighted_loss * label_valid).sum() / float(num_tokens)
+        # weighted_loss = (unweighted_loss * label_valid).sum() / float(num_tokens)
+        weighted_loss = (unweighted_loss * label_valid).sum()
         return weighted_loss
 
 
@@ -114,24 +115,29 @@ def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
     PAD_IDX = tgt_vocab[PAD_TOKEN]
 
     for epoch in tqdm(range(num_epochs)):
+        epoch_loss = 0
+
         for batch in data_iter:
             optimizer.zero_grad()
             X, Y = [x.to(device) for x in batch]
             bos = Tensor([tgt_vocab[BOS_TOKEN]] * Y.shape[0], device=device).reshape((-1, 1))
             dec_input = F.cat([bos, Y[:, :-1]], 1)  # 强制教学
             Y_hat, _ = net(X, dec_input)
-            Y = Y[1:].view(-1)
+            Y = Y.view(-1)
             output_dim = Y_hat.shape[-1]
-            Y_hat = Y_hat[1:].view(-1, output_dim)
+            Y_hat = Y_hat.view(-1, output_dim)
             l = loss(Y_hat, Y, PAD_IDX)
 
             l.backward()
             optimizer.step()
 
-        if (epoch + 1) % 10 == 0:
-            print(f'loss {l.item() :.3f}')
+            epoch_loss += l.item()
 
-    print(f'loss {l.item() :.3f}')
+        if (epoch + 1) % 20 == 0:
+            print(f'loss {epoch_loss / len(data_iter) :.3f}')
+            animator.add(epoch + 1, epoch_loss / len(data_iter))
+
+    print(f'loss {epoch_loss / len(data_iter) :.3f}')
     animator.show()
 
 
@@ -144,13 +150,13 @@ dropout = 0.1
 batch_size = 128
 num_steps = 20
 
-lr = 0.05
-num_epochs = 300
+lr = 0.0005
+num_epochs = 1000
 min_freq = 1
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
 
 # 加载数据集
-train_iter, src_vocab, tgt_vocab = load_dataset_nmt('../data/en-cn/train.txt', batch_size=batch_size,
+train_iter, src_vocab, tgt_vocab = load_dataset_nmt('../data/en-cn/train_mini.txt', batch_size=batch_size,
                                                     min_freq=min_freq, max_len=num_steps)
 # 构建编码器
 encoder = RNNEncoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropout)

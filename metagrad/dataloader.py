@@ -52,6 +52,9 @@ class DataLoader:
         else:
             self.indices = np.arange(self.data_size)
 
+    def __len__(self):
+        return self.data_size
+
     def __next__(self):
         if self.it >= self.max_its:
             self.reset()
