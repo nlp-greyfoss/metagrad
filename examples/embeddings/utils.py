@@ -48,25 +48,29 @@ class Vocabulary:
     def __len__(self):
         return len(self._idx_to_token)
 
-    def __getitem__(self, token):
-        '''得到token对应的id'''
-        return self._token_to_idx.get(token, self.unk)
+    def __getitem__(self, tokens):
+        '''得到tokens对应的id'''
+        if not isinstance(tokens, (list, tuple)):
+            return self._token_to_idx.get(tokens, self.unk)
+        return [self.__getitem__(token) for token in tokens]
 
     @property
     def id2token(self):
         '''返回idx_to_token列表'''
         return self._idx_to_token
 
-    def token(self, idx):
-        assert 0 <= idx < len(self._idx_to_token), f"actual index : {idx} not between 0 and {len(self._idx_to_token)}"
+    def token(self, indices):
         '''根据索引获取token'''
-        return self._idx_to_token[idx]
+        if not isinstance(indices, (list, tuple)):
+            return self._idx_to_token[indices]
+
+        return [self._idx_to_token(index) for index in indices]
 
     def to_ids(self, tokens):
         return [self[token] for token in tokens]
 
     def to_tokens(self, indices):
-        return [self._idx_to_token[index] for index in indices]
+        return self.token(indices)
 
     def save(self, path):
         with open(path, 'w') as f:

@@ -55,8 +55,8 @@ coverage.xml
 *.vec
 
 # image in examples
-examples/*.png
-examples/*.gif
+examples/**/*.png
+examples/**/*.gif
 
 examples/data
 examples/tests

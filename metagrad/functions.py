@@ -134,6 +134,7 @@ def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
         xp = input.xp
         # 如果target是类别索引
         errors = -input[xp.arange(target.shape[0]), target.array()]
+
     return _reduction(errors, reduction)
 
 

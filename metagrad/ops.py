@@ -1,10 +1,10 @@
 import weakref
 from typing import Any, Tuple, Union
-
 import numpy as np
 
 from metagrad import cuda
 from metagrad.cuda import get_array_module, ndarray
+
 from metagrad.tensor import Tensor, NdArray, Config
 
 '''
@@ -468,7 +468,6 @@ class Slice(Function):
 
         return bigger_grad, None
 
-
 class _IndexSelect(Function):
     '''
     返回索引基类，这种类是没有梯度的，因为返回的只是索引
@@ -505,6 +504,17 @@ class Reshape(Function):
         return grad.reshape(x_shape), None
 
 
+class ExpandDims(Function):
+    def forward(self, x: NdArray, axis: int) -> NdArray:
+        xp = get_array_module(x)
+        self.save_for_backward(x.shape)
+        return xp.expand_dims(x, axis)
+
+    def backward(self, grad: NdArray) -> NdArray:
+        x_shape, = self.saved_tensors
+        return grad.reshape(x_shape)
+
+
 class Transpose(Function):
     def forward(self, x: NdArray, axes) -> NdArray:
         self.save_for_backward(axes)
@@ -516,3 +526,35 @@ class Transpose(Function):
             return grad.transpose()
 
         return grad.transpose(tuple(np.argsort(axes))), None
+
+
+Permute = Transpose
+
+
+class Repeat(Function):
+    def forward(self, x: NdArray, repeats) -> NdArray:
+        xp = get_array_module(x)
+        if isinstance(repeats, Tuple):
+            repeats = xp.array(repeats)
+        self.save_for_backward(x, repeats, xp)
+        return xp.tile(x, repeats.tolist())
+
+    def backward(self, grad: NdArray) -> Any:
+        x, repeats, xp = self.saved_tensors
+        # 应该要扩展的维度数
+        num_unsqueezed = grad.ndim - x.ndim
+
+        for _ in range(num_unsqueezed):
+            grad = grad.sum(0, keepdims=False)
+
+        if repeats.ndim == 0:
+            # 将repeats的维度进行扩展
+            repeats = xp.expand_dims(repeats, 0)
+
+        for dim, repeat in enumerate(repeats[num_unsqueezed:]):
+            if repeat == 1:
+                continue
+
+            grad = sum(xp.array_split(grad, repeat, dim))
+
+        return grad

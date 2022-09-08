@@ -1,4 +1,5 @@
 import os
+import time
 from datetime import datetime
 from typing import List
 
@@ -10,6 +11,7 @@ import metagrad.module as nn
 from metagrad.dataloader import DataLoader
 from metagrad.optim import Optimizer
 from metagrad.tensor import Tensor
+import metagrad.functions as F
 
 
 def set_figsize(figsize=(4.9, 3.5)):
@@ -232,6 +234,36 @@ class Animator:
         plt.close()
 
 
+class Timer:
+    """记录多次运行时间"""
+
+    def __init__(self):
+        """Defined in :numref:`subsec_linear_model`"""
+        self.times = []
+        self.start()
+
+    def start(self):
+        """启动计时器"""
+        self.tik = time.time()
+
+    def stop(self):
+        """停止计时器并将时间记录在列表中"""
+        self.times.append(time.time() - self.tik)
+        return self.times[-1]
+
+    def avg(self):
+        """返回平均时间"""
+        return sum(self.times) / len(self.times)
+
+    def sum(self):
+        """返回时间总和"""
+        return sum(self.times)
+
+    def cumsum(self):
+        """返回累计时间"""
+        return np.array(self.times).cumsum().tolist()
+
+
 def run_epoch(model: nn.Module, data_loader: DataLoader, loss: nn.Module, opt: Optimizer = None,
               activate_func=lambda x: x, evaluate_func=accuracy):
     '''
@@ -291,3 +323,28 @@ def unpad_sequence(padded_sequences, lengths):
         unpadded_sequences.append(unpacked_seq)
 
     return unpadded_sequences
+
+
+# def clip_grad_norm_(parameters, max_norm: float, norm_type: float = 2.0):
+#     if isinstance(parameters, Tensor):
+#         parameters = [parameters]
+#
+#     grads = [p.grad for p in parameters if p.grad is not None]
+#     max_norm = float(max_norm)
+#     norm_type = float(norm_type)
+#     if len(grads) == 0:
+#         return Tensor(0.)
+#
+#     device = grads[0].device
+#
+#     if norm_type == float('inf'):
+#         norms = [g.abs().max().to(device) for g in grads]
+#         total_norm = norms[0] if len(norms) == 1 else F.stack(norms).max()
+#     else:
+#         total_norm = F.norm(F.stack([F.norm(g, norm_type).to(device) for g in grads]), norm_type)
+#
+#     clip_coef = max_norm / (total_norm + 1e-6)
+#     clip_coef_clamped = F.clamp(clip_coef, max=1.0)
+#     for g in grads:
+#         g.mul_(clip_coef_clamped.to(g.device))
+#     return total_norm
