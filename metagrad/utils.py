@@ -325,6 +325,18 @@ def unpad_sequence(padded_sequences, lengths):
     return unpadded_sequences
 
 
+def ngrams_iterator(token_list, ngrams):
+    def _get_ngrams(n):
+        return zip(*[token_list[i:] for i in range(n)])
+
+    # 1-gram
+    for x in token_list:
+        yield x
+    # n-gram
+    for n in range(2, ngrams + 1):
+        for x in _get_ngrams(n):
+            yield " ".join(x)
+
 # def clip_grad_norm_(parameters, max_norm: float, norm_type: float = 2.0):
 #     if isinstance(parameters, Tensor):
 #         parameters = [parameters]

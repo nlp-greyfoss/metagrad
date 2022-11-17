@@ -66,7 +66,7 @@ class RNNDecoder(Decoder):
 
         # 将最顶层的上下文向量广播成与X相同的时间步，其他维度上只复制1次(保持不变)
         # 形状 (num_layers, batch_size, num_hiddens ) => (num_steps, batch_size, num_hiddens)
-        context = state[-1].repeat((X.shape[0], 1, 1))
+        context = state[-1].repeat(X.shape[0], 1, 1)
         # 为了每个解码时间步都能看到上下文，拼接context与X
         # (num_steps, batch_size, embed_size) + (num_steps, batch_size, num_hiddens)
         #                           => (num_steps, batch_size, embed_size + num_hiddens)
@@ -138,7 +138,35 @@ def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
             animator.add(epoch + 1, epoch_loss / len(data_iter))
 
     print(f'loss {epoch_loss / len(data_iter) :.3f}')
-    animator.show()
+    # animator.show()
+
+
+def predict_seq2seq(net, data_iter, src_vocab, tgt_vocab, num_steps, device):
+    net.eval()
+    output = []
+    for batch in data_iter:
+        output_seq = []
+
+        X, Y = [x.to(device) for x in batch]
+        enc_outputs = net.encoder(X)
+        dec_state = net.decoder.init_state(enc_outputs)
+        # 初始化输出
+        dec_X = Tensor([tgt_vocab['<bos>']], dtype=numpy.int32, device=device).unsqueeze(0)
+        for _ in range(num_steps):
+            hat_y, dec_state = net.decoder(dec_X, dec_state)
+            # print(f"{hat_y=}, shape={hat_y.shape}")
+
+            dec_X = hat_y.argmax(axis=2)
+            # print(f"{dec_X=}")
+
+            pred = dec_X.squeeze(axis=0).item()
+            # print(f"{pred=}")
+            if pred == tgt_vocab['<eos>']:
+                break
+            output_seq.append(pred)
+        output.append(''.join(tgt_vocab.token(output_seq)))
+
+    return output
 
 
 # 参数定义
@@ -156,7 +184,7 @@ min_freq = 1
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
 
 # 加载数据集
-train_iter, src_vocab, tgt_vocab = load_dataset_nmt('../data/en-cn/train_mini.txt', batch_size=batch_size,
+train_iter, src_vocab, tgt_vocab = load_dataset_nmt('../data/en-cn/train.txt', batch_size=batch_size,
                                                     min_freq=min_freq, max_len=num_steps)
 # 构建编码器
 encoder = RNNEncoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropout)
@@ -166,3 +194,9 @@ decoder = RNNDecoder(len(tgt_vocab), embed_size, num_hiddens, num_layers, dropou
 net = EncoderDecoder(encoder, decoder)
 # 训练
 train_seq2seq(net, train_iter, lr, num_epochs, tgt_vocab, device)
+
+test_iter, _, _ = load_dataset_nmt('../data/en-cn/test_mini.txt', batch_size=1, min_freq=min_freq, max_len=num_steps)
+
+output = predict_seq2seq(net, test_iter, src_vocab, tgt_vocab, num_steps=num_steps, device=device)
+net.save("net.pt")
+print(output)

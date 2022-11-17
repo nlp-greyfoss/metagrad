@@ -64,7 +64,7 @@ class Vocabulary:
         if not isinstance(indices, (list, tuple)):
             return self._idx_to_token[indices]
 
-        return [self._idx_to_token(index) for index in indices]
+        return [self._idx_to_token[index] for index in indices]
 
     def to_ids(self, tokens):
         return [self[token] for token in tokens]

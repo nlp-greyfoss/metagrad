@@ -412,12 +412,20 @@ class Tensor:
         # 调用动态绑定的方法
         return self.__getattribute__(name)
 
-    def view(self, *shape):
+    def repeat(self, *sizes):
+        if len(sizes) == 1:
+            sizes = sizes[0]
 
-        if isinstance(shape[0], tuple):
+        return self._get_ops('_repeat')(sizes)
+
+    def reshape(self, *shape):
+        if len(shape) == 1:
             shape = shape[0]
 
-        return self._get_ops('reshape')(shape)
+        return self._get_ops('_reshape')(shape)
+
+    def view(self, *shape):
+        return self.reshape(shape)
 
     def expand_dims(self, axis: int):
         return self._get_ops('expanddims')(axis)
@@ -510,8 +518,12 @@ def register(name, fxn):
 
     if name in ["pow", "neg", "abs"]:
         setattr(Tensor, f"__{name}__", dispatch)
-    # 为Tensor添加属性，名为name，值为dispatch函数引用
-    setattr(Tensor, name, dispatch)
+
+    if getattr(Tensor, name, None) is None:
+        # 为Tensor添加属性，名为name，值为dispatch函数引用
+        setattr(Tensor, name, dispatch)
+    else:
+        setattr(Tensor, f'_{name}', dispatch)
 
     # 这几个方法都有__xx__, __ixx__, __rxx__ 魔法方法
     if name in ["add", "sub", "mul", "truediv", "matmul"]:
