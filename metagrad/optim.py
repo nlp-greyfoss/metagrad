@@ -131,10 +131,9 @@ class Adam(Optimizer):
 
                     if group['amsgrad']:
                         max_exp_avg_sqs[i] = max(max_exp_avg_sqs[i], exp_avg_sqs[i])
-                        denom = (max_exp_avg_sqs[i].sqrt() / math.sqrt(bias_correction2)).add_(eps)
-
+                        denom = max_exp_avg_sqs[i].sqrt() / math.sqrt(bias_correction2)
                     else:
                         denom = exp_avg_sqs[i].sqrt() / math.sqrt(bias_correction2)
                     step_size = lr / bias_correction1
 
-                    p -= step_size * exp_avgs[i] / (denom + eps)
+                    param -= step_size * exp_avgs[i] / (denom + eps)

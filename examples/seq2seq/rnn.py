@@ -9,7 +9,7 @@ from examples.seq2seq.dataset import load_dataset_nmt
 from metagrad import Tensor, cuda
 import metagrad.functions as F
 from metagrad.loss import CrossEntropyLoss
-from metagrad.optim import SGD
+from metagrad.optim import Adam, SGD
 from metagrad.tensor import no_grad
 from metagrad.utils import Animator, Accumulator, Timer
 from tqdm import tqdm
@@ -107,7 +107,7 @@ def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
     """训练序列到序列模型"""
 
     net.to(device)
-    optimizer = SGD(net.parameters(), lr=lr)
+    optimizer = Adam(net.parameters(), lr=lr)
     loss = MaskedSoftmaxCELoss()
     net.train()
     animator = Animator(xlabel='epoch', ylabel='loss', xlim=[10, num_epochs])
@@ -133,7 +133,7 @@ def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
 
             epoch_loss += l.item()
 
-        if (epoch + 1) % 20 == 0:
+        if (epoch + 1) % 5 == 0:
             print(f'loss {epoch_loss / len(data_iter) :.3f}')
             animator.add(epoch + 1, epoch_loss / len(data_iter))
 
@@ -164,7 +164,8 @@ def predict_seq2seq(net, data_iter, src_vocab, tgt_vocab, num_steps, device):
             if pred == tgt_vocab['<eos>']:
                 break
             output_seq.append(pred)
-        output.append(''.join(tgt_vocab.token(output_seq)))
+        output.append(
+            f" {' '.join(src_vocab.token(X.squeeze().data.tolist()))} => {''.join(tgt_vocab.token(output_seq))}")
 
     return output
 
@@ -178,7 +179,7 @@ dropout = 0.1
 batch_size = 128
 num_steps = 20
 
-lr = 0.0005
+lr = 0.001
 num_epochs = 1000
 min_freq = 1
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
@@ -195,7 +196,8 @@ net = EncoderDecoder(encoder, decoder)
 # 训练
 train_seq2seq(net, train_iter, lr, num_epochs, tgt_vocab, device)
 
-test_iter, _, _ = load_dataset_nmt('../data/en-cn/test_mini.txt', batch_size=1, min_freq=min_freq, max_len=num_steps)
+test_iter, _, _ = load_dataset_nmt('../data/en-cn/test_mini.txt', batch_size=1, min_freq=min_freq, max_len=num_steps,
+                                   src_vocab=src_vocab, tgt_vocab=tgt_vocab)
 
 output = predict_seq2seq(net, test_iter, src_vocab, tgt_vocab, num_steps=num_steps, device=device)
 net.save("net.pt")
