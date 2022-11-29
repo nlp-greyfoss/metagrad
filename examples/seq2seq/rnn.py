@@ -62,18 +62,30 @@ class RNNDecoder(Decoder):
         return enc_outputs[1]  # 得到编码器输出中的state
 
     def forward(self, X, state) -> Tuple[Tensor, Tensor]:
-        X = self.embedding(X).permute((1, 0, 2))  # (num_steps, batch_size, embed_size)
+        '''
+
+        Args:
+            X: (batch_size)
+            state:
+
+        Returns:
+
+        '''
+        X = X.unsqueeze(0) # (1, batch_size)
+        X = self.embedding(X) # (1, batch_size, embed_size)
+
 
         # 将最顶层的上下文向量广播成与X相同的时间步，其他维度上只复制1次(保持不变)
-        # 形状 (num_layers, batch_size, num_hiddens ) => (num_steps, batch_size, num_hiddens)
+        # TODO 形状 (num_layers, batch_size, num_hiddens ) => (num_steps, batch_size, num_hiddens)
         context = state[-1].repeat(X.shape[0], 1, 1)
         # 为了每个解码时间步都能看到上下文，拼接context与X
-        # (num_steps, batch_size, embed_size) + (num_steps, batch_size, num_hiddens)
-        #                           => (num_steps, batch_size, embed_size + num_hiddens)
+        # (1, batch_size, embed_size) + (1, batch_size, num_hiddens)
+        #                           => (1, batch_size, embed_size + num_hiddens)
         concat_context = F.cat((X, context), 2)
 
         output, state = self.rnn(concat_context, state)
-        output = self.dense(output).permute((1, 0, 2))  # (batch_size, num_steps, vocab_size)
+
+        output = self.dense(output.squeeze(0))  # (batch_size, vocab_size)
 
         return output, state
 
@@ -107,7 +119,7 @@ def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
     """训练序列到序列模型"""
 
     net.to(device)
-    optimizer = Adam(net.parameters(), lr=lr)
+    optimizer = SGD(net.parameters(), lr=lr)
     loss = MaskedSoftmaxCELoss()
     net.train()
     animator = Animator(xlabel='epoch', ylabel='loss', xlim=[10, num_epochs])
@@ -133,12 +145,12 @@ def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
 
             epoch_loss += l.item()
 
-        if (epoch + 1) % 5 == 0:
-            print(f'loss {epoch_loss / len(data_iter) :.3f}')
-            animator.add(epoch + 1, epoch_loss / len(data_iter))
+        #if (epoch + 1) % 5 == 0:
+        print(f'{epoch} : loss {epoch_loss / len(data_iter) :.3f}')
+         #   animator.add(epoch + 1, epoch_loss / len(data_iter))
 
     print(f'loss {epoch_loss / len(data_iter) :.3f}')
-    # animator.show()
+    animator.show()
 
 
 def predict_seq2seq(net, data_iter, src_vocab, tgt_vocab, num_steps, device):
@@ -172,15 +184,15 @@ def predict_seq2seq(net, data_iter, src_vocab, tgt_vocab, num_steps, device):
 
 # 参数定义
 embed_size = 64
-num_hiddens = 128
+num_hiddens = 64
 num_layers = 2
 dropout = 0.1
 
 batch_size = 128
 num_steps = 20
 
-lr = 0.001
-num_epochs = 1000
+lr = 0.0005
+num_epochs = 100
 min_freq = 1
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
 

@@ -117,7 +117,7 @@ class NMTDataset(Dataset):
 
 def load_dataset_nmt(data_path, batch_size=32, min_freq=1, max_len=20, src_vocab=None, tgt_vocab=None):
     # 读取原始文本
-    raw_text = read_nmt(data_path)
+    raw_text = cht_to_chs(read_nmt(data_path))
     # 处理英文符号
     text = process_nmt(raw_text)
     # 中英文分词
