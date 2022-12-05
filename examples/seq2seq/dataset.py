@@ -115,7 +115,7 @@ class NMTDataset(Dataset):
         return src, tgt
 
 
-def load_dataset_nmt(data_path, batch_size=32, min_freq=1, max_len=20, src_vocab=None, tgt_vocab=None):
+def load_dataset_nmt(data_path, batch_size=32, min_freq=1, max_len=20, src_vocab=None, tgt_vocab=None, shuffle=True):
     # 读取原始文本
     raw_text = cht_to_chs(read_nmt(data_path))
     # 处理英文符号
@@ -135,7 +135,7 @@ def load_dataset_nmt(data_path, batch_size=32, min_freq=1, max_len=20, src_vocab
     # 构建数据集
     dataset = NMTDataset([(src, tgt) for src, tgt in zip(src_array, tgt_array)])
     # 数据加载器
-    data_loader = DataLoader(dataset, batch_size=batch_size, collate_fn=dataset.collate_fn, shuffle=True)
+    data_loader = DataLoader(dataset, batch_size=batch_size, collate_fn=dataset.collate_fn, shuffle=shuffle)
     # 返回加载器和两个词表
     return data_loader, src_vocab, tgt_vocab
 
