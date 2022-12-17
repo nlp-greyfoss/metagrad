@@ -34,9 +34,14 @@ class Module:
     training: bool
 
     def __init__(self) -> None:
-        self.training = True
-        self._parameters: Dict[str, Optional[Parameter]] = OrderedDict()
-        self._modules: Dict[str, Optional['Module']] = OrderedDict()
+        """
+        调用super().__setattr__('a', a)而不是self.a=a防止调用Module.__setattr__的开销
+
+        Module.__setattr__具有额外的对parameters,submodules的处理
+        """
+        super().__setattr__('training', True)
+        super().__setattr__('_parameters', OrderedDict())
+        super().__setattr__('_modules', OrderedDict())
 
     def register_parameter(self, name: str, param: Optional[Parameter]) -> None:
         self._parameters[name] = param
@@ -178,6 +183,13 @@ class Module:
 
         return self
 
+    def apply(self, fn):
+        for module in self.children():
+            module.apply(fn)
+
+        fn(self)
+        return self
+
     def to_gpu(self, device):
         return self._apply(lambda t: t.to_gpu(device))
 
@@ -188,6 +200,15 @@ class Module:
         return self._apply(lambda t: t.to(device))
 
     def __setattr__(self, name: str, value: Union[Tensor, 'Module']) -> None:
+        '''
+        通过该魔法方法注册属性到Module中
+        Args:
+            name:
+            value:
+
+        Returns:
+
+        '''
         def remove_from(*dicts_or_sets):
             for d in dicts_or_sets:
                 if name in d:
@@ -222,7 +243,7 @@ class Module:
                                     "(torch.nn.Module or None expected)")
                 modules[name] = value
             else:
-                object.__setattr__(self, name, value)
+                super().__setattr__(name, value)
 
     def __getattr__(self, name: str) -> Union[Tensor, 'Module']:
         if '_parameters' in self.__dict__:
@@ -242,7 +263,7 @@ class Module:
         elif name in self._modules:
             del self._modules[name]
         else:
-            object.__delattr__(self, name)
+            super().__delattr__(name)
 
     def _get_name(self):
         return self.__class__.__name__
@@ -383,7 +404,6 @@ class Embedding(Module):
         return s.format(**self.__dict__)
 
 
-
 class Sequential(Module):
     def __init__(self, *args):
         super(Sequential, self).__init__()
@@ -417,6 +437,9 @@ class Sequential(Module):
         else:
             key = self._get_item_by_idx(self._modules.keys(), idx)
             delattr(self, key)
+
+        str_indices = [str(i) for i in range(len(self._modules))]
+        self._modules = OrderedDict(list(zip(str_indices, self._modules.values())))
 
     def __len__(self) -> int:
         return len(self._modules)
@@ -541,7 +564,7 @@ class Dropout(Module):
 
 class RNNCellBase(Module):
     def reset_parameters(self) -> None:
-        stdv = 1.0 / math.sqrt(self.hidden_size) if self.hidden_size > 0 else 0
+        stdv = 1.0 / math.sqrt(self.hidden_size)
         for weight in self.parameters():
             init.uniform_(weight, -stdv, stdv)
 
@@ -636,8 +659,8 @@ class GRUCell(RNNCellBase):
 
 
 class RNNBase(Module):
-    def __init__(self, cell: RNNCellBase, input_size: int, hidden_size: int,num_layers: int = 1,bias: bool = True,
-                 batch_first: bool = False,dropout: float = 0, bidirectional: bool = False,
+    def __init__(self, cell: RNNCellBase, input_size: int, hidden_size: int, num_layers: int = 1, bias: bool = True,
+                 batch_first: bool = False, dropout: float = 0, bidirectional: bool = False,
                  reset_parameters=True, device=None, dtype=None) -> None:
         '''
            :param cell:  RNN单元类型
@@ -679,8 +702,6 @@ class RNNBase(Module):
         if self.bidirectional:
             # 支持双向
             self.back_cells = copy.deepcopy(self.cells)
-
-
 
     def _one_directional_op(self, input, n_steps, cell, h, c) -> Tuple[Tensor, Tensor, Tensor]:
         hs = []

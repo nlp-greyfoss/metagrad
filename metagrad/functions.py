@@ -5,22 +5,32 @@ import numpy as np
 from metagrad.cuda import get_array_module
 from metagrad.ops import Function
 from metagrad.tensor import Tensor, NdArray
+from metagrad import cuda
 
 
 # ----激活函数----
-class Relu(Function):
-    '''
-    实现relu激活函数
-    '''
-
+class ReLU(Function):
     def forward(self, x: NdArray) -> NdArray:
-        self.save_for_backward(x)
         xp = get_array_module(x)
-        return xp.maximum(x, 0)
+        y = xp.maximum(x, 0, dtype=x.dtype)
+        self.save_for_backward(y, xp)
+
+        return y
 
     def backward(self, grad: NdArray) -> NdArray:
-        x, = self.saved_tensors
-        return grad * (x > 0)
+        y, xp = self.saved_tensors
+        if xp is np:
+            return grad * (y > 0)
+        else:
+            return cuda.elementwise(
+                'T y, T gy', 'T gx',
+                'gx = y > 0 ? gy : (T)0', 'relu_bwd')(y, grad)
+
+
+# def relu(x: Tensor) -> Tensor:
+#     return x * (x > 0)
+def relu(x: Tensor) -> Tensor:
+    return ReLU()(x)
 
 
 class LeakyRelu(Function):
@@ -55,18 +65,48 @@ def logsumexp(x: Tensor, axis=-1):
     return b + (x - b).exp().sum(axis=axis, keepdims=True).log()
 
 
+class Sigmoid(Function):
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+        if xp is np:
+            half = x.dtype.type(0.5)
+            y = np.tanh(x * half) * half + half
+        else:
+            y = cuda.elementwise(
+                'T x', 'T y', 'y = tanh(x * 0.5) * 0.5 + 0.5',
+                'sigmoid_fwd')(x)
+
+        self.save_for_backward(y, xp)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        y, xp = self.saved_tensors
+        if xp is np:
+            one = y.dtype.type(1)
+            return grad * y * (one - y)
+        else:
+            return cuda.elementwise(
+                'T y, T gy', 'T gx',
+                'gx = gy * y * (1 - y)',
+                'sigmoid_bwd')(y, grad)
+
+
 def sigmoid(x: Tensor) -> Tensor:
-    return 1. / (1. + (-x).exp())
+    '''
+        重写 return 1. / (1. + (-x).exp()) 加快速度
+
+    Args:
+        x:
+
+    Returns:
+
+    '''
+    return Sigmoid()(x)
 
 
 def logsigmoid(x: Tensor) -> Tensor:
     return sigmoid(x).log()
-
-
-# def relu(x: Tensor) -> Tensor:
-#     return x * (x > 0)
-def relu(x: Tensor) -> Tensor:
-    return Relu()(x)
 
 
 # def leaky_relu(x: Tensor, slope: float = 0.1) -> Tensor:
@@ -89,8 +129,34 @@ def softplus(x: Tensor, beta: float = 1) -> Tensor:
     return (1 + (beta * x).exp()).log() / beta
 
 
+class Tanh(Function):
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+        if xp is np:
+            y = np.tanh(x)
+        else:
+            y = cuda.elementwise(
+                'T x', 'T y', 'y = tanh(x)',
+                'tanh_fwd')(x)
+
+        self.save_for_backward(y, xp)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        y, xp = self.saved_tensors
+        if xp is np:
+            one = y.dtype.type(1)
+            return grad * (one - y * y)
+        else:
+            return cuda.elementwise(
+                'T y, T gy', 'T gx',
+                'gx = gy *  (1 - y*y)',
+                'tanh_bwd')(y, grad)
+
+
 def tanh(x: Tensor) -> Tensor:
-    return 2 * sigmoid(2 * x) - 1
+    return Tanh()(x)
 
 
 def softmax(x: Tensor, axis=-1):
@@ -176,7 +242,7 @@ def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
     if training:
         # 丢弃掩码 1代表保留，0代表丢弃 以1-p的概率生成输出为1伯努利分布，做了input的元素个数这么多次实验
         mask = input.device.xp.random.binomial(1, 1 - p, size=input.shape)
-        # 让输入乘上这个与之同shape的丢弃掩码，然后除以1-p进行缩放，这样在测试时，可以原样输出
+        # 让输入乘上这个与之同shape的mask，然后除以1-p进行缩放，这样在测试时，可以原样输出
         return input * Tensor(mask, requires_grad=False) / (1 - p)
     else:
         return input
@@ -250,7 +316,6 @@ class Stack(Function):
 
     def backward(self, grad: NdArray) -> NdArray:
         axis, = self.saved_tensors
-        # todo 支持gpu
         return split(Tensor(grad), axis)
 
 

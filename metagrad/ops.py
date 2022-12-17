@@ -170,6 +170,7 @@ class Mul(Function):
     def backward(self, grad: NdArray) -> Tuple[NdArray, NdArray]:
         x, y = self.saved_tensors
         # 分别返回∂L/∂x 和 ∂L/∂y
+
         return unbroadcast(grad * y, x.shape), unbroadcast(grad * x, y.shape)
 
 
@@ -371,9 +372,16 @@ class Pow(Function):
         return x ** c
 
     def backward(self, grad: NdArray) -> Tuple[NdArray, None]:
+        xp = get_array_module(grad)
         x, c = self.saved_tensors
         # 把c当成一个常量，不需要计算梯度
-        return grad * c * x ** (c - 1), None
+        if xp is np:
+            return grad * c * x ** (c - 1), None
+        else:
+            return cuda.elementwise(
+                'T x, T gy, T c', 'T gx',
+                'gx = gy * c * pow(x, c - 1)',
+                'pow_bwd')(x, grad, c)
 
 
 class Log(Function):
@@ -418,7 +426,13 @@ class Abs(Function):
         x, xp = self.saved_tensors
         # x中元素为0的位置，返回0
         # 否则返回+1/-1
-        return grad * xp.where(x == 0, 0, x / xp.abs(x))
+        if xp is np:
+            return grad * np.sign(x)
+        else:
+            return cuda.elementwise(
+                'T x, T gy', 'T gx',
+                'gx = ((x > 0) - (x < 0)) * gy',
+                'abs_bwd')(x, grad)
 
 
 class Sqrt(Function):
@@ -467,6 +481,7 @@ class Slice(Function):
             bigger_grad.scatter_add(slices, grad)
 
         return bigger_grad, None
+
 
 class _IndexSelect(Function):
     '''

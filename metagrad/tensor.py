@@ -430,6 +430,9 @@ class Tensor:
     def expand_dims(self, axis: int):
         return self._get_ops('expanddims')(axis)
 
+    def __array__(self):
+        return self.to_cpu().array()
+
     def backward(self, grad: "Tensor" = None, retain_grad=False, create_graph=False) -> None:
         '''
         实现Tensor的反向传播

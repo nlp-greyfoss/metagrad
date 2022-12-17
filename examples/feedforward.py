@@ -7,7 +7,7 @@ from metagrad.dataloader import DataLoader
 from metagrad.dataset import TensorDataset
 from metagrad.functions import sigmoid
 from metagrad.loss import BCELoss
-from metagrad.optim import SGD
+from metagrad.optim import SGD, Adam
 from metagrad.tensor import Tensor, debug_mode
 from metagrad.tensor import no_grad
 from metagrad import cuda
