@@ -6,8 +6,6 @@ from collections import OrderedDict
 from itertools import chain, islice
 from typing import List, Optional, Tuple, Dict, Iterable, Union, Iterator, Set
 
-import numpy as np
-
 import metagrad.functions as F
 from metagrad import init
 from metagrad.paramater import Parameter
@@ -209,6 +207,7 @@ class Module:
         Returns:
 
         '''
+
         def remove_from(*dicts_or_sets):
             for d in dicts_or_sets:
                 if name in d:
@@ -654,7 +653,7 @@ class GRUCell(RNNCellBase):
         r = F.sigmoid(i_r + h_r)  # 重置门
         z = F.sigmoid(i_z + h_z)  # 更新门
 
-        h_next = z * h + (1 - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
+        h_next = z * h + (z.dtype.type(1) - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
         return h_next, None
 
 

@@ -284,17 +284,17 @@ class Tensor:
         return self
 
     def float_(self) -> "Tensor":
-        self.data = self.data.astype(np.float32)
+        self.data = self.data.astype(_type)
         return self
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
         xp = self.device.xp
-        self.data = xp.random.uniform(low, high, size=self.shape)
+        self.data = xp.random.uniform(low, high, size=self.shape).astype(_type)
         return self
 
     def normal_(self, mean: float = 0.0, std: float = 1.0) -> "Tensor":
         xp = self.device.xp
-        self.data = xp.random.normal(mean, std, size=self.shape)
+        self.data = xp.random.normal(mean, std, size=self.shape).astype(_type)
         return self
 
     def index_fill_(self, dim: int, index: "Tensor", value: float) -> "Tensor":
@@ -454,7 +454,7 @@ class Tensor:
         if grad is None:
             if self.shape == ():
                 # 设置梯度值为1，grad本身不需要计算梯度
-                self._grad = Tensor(1., device=self.device)
+                self._grad = Tensor(1., device=self.device, dtype=_type)
             else:
                 # 如果当前Tensor得到不是标量，那么grad必须指定
                 raise RuntimeError("grad must be specified for non scalar")

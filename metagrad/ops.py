@@ -372,16 +372,9 @@ class Pow(Function):
         return x ** c
 
     def backward(self, grad: NdArray) -> Tuple[NdArray, None]:
-        xp = get_array_module(grad)
         x, c = self.saved_tensors
         # 把c当成一个常量，不需要计算梯度
-        if xp is np:
-            return grad * c * x ** (c - 1), None
-        else:
-            return cuda.elementwise(
-                'T x, T gy, T c', 'T gx',
-                'gx = gy * c * pow(x, c - 1)',
-                'pow_bwd')(x, grad, c)
+        return grad * c * x ** (c - 1), None
 
 
 class Log(Function):

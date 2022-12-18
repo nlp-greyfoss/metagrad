@@ -1,11 +1,11 @@
-from typing import Tuple, Union, List, Optional
+from typing import Tuple, Union, List
 
 import numpy as np
 
+from metagrad import cuda
 from metagrad.cuda import get_array_module
 from metagrad.ops import Function
 from metagrad.tensor import Tensor, NdArray
-from metagrad import cuda
 
 
 # ----激活函数----
@@ -176,7 +176,7 @@ def log_softmax(x: Tensor, axis=-1):
 
 def _reduction(errors: Tensor, method: str) -> Tensor:
     if method == "mean":
-        loss = errors.sum() / float(errors.shape[0])
+        loss = errors.mean(axis=0)
     elif method == "sum":
         loss = errors.sum()
     else:
