@@ -2,14 +2,15 @@ import os
 import random
 from string import ascii_letters
 
-import numpy as np
-from tqdm import tqdm
-from unidecode import unidecode
-
 import metagrad.module as nn
-from metagrad.loss import CrossEntropyLoss
-from metagrad.optim import SGD
 from metagrad.tensor import Tensor, cuda
+
+import metagrad.functions as F
+from unidecode import unidecode
+import numpy as np
+from metagrad.optim import Adam, SGD
+from metagrad.loss import CrossEntropyLoss
+from tqdm import tqdm
 
 data_dir = "../data/rnn/names"
 
@@ -115,7 +116,7 @@ for epoch in tqdm(range(num_epochs)):
         loss = criterion(output, label)
 
         optimizer.zero_grad()
-1        loss.backward()
+        loss.backward()
         optimizer.step()
 
         if (i + 1) % print_interval == 0:
@@ -125,14 +126,15 @@ for epoch in tqdm(range(num_epochs)):
                 f"Loss: {loss.item():.4f}"
             )
 
+
 print(f"Training cost {time.time() - start}s")
 
 num_correct = 0
 num_samples = len(test_dataset)
 
 model.eval()
-model.save("simple.pt")···
-# model.load("simple.pt")
+model.save("simple.pt")
+#model.load("simple.pt")
 model.to_gpu(device)
 
 for name, label in test_dataset:
