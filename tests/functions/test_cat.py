@@ -20,4 +20,4 @@ def test_simple_cat():
     my.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)

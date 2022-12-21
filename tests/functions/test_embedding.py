@@ -24,7 +24,7 @@ def test_simple_embedding():
     my.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(m_weight.grad.data, t_weight.grad.data)
+    assert np.allclose(m_weight.grad, t_weight.grad)
 
 
 def test_embedding():
@@ -46,4 +46,4 @@ def test_embedding():
     my.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(m_weight.grad.data, t_weight.grad.data)
+    assert np.allclose(m_weight.grad, t_weight.grad)

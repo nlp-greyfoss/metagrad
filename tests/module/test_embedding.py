@@ -15,7 +15,7 @@ def test_simple_embedding():
 
     my.sum().backward()
 
-    assert np.allclose(embed.weight.grad.data, np.array([[0, 0, 0], [0, 0, 0], [1, 1, 1], [0, 0, 0]]))
+    assert np.allclose(embed.weight.grad, np.array([[0, 0, 0], [0, 0, 0], [1, 1, 1], [0, 0, 0]]))
 
 
 def test_from_pretrained():
@@ -29,10 +29,10 @@ def test_from_pretrained():
 
     my.sum().backward()
 
-    assert np.allclose(embed.weight.grad.data, np.array([[1, 1, 1], [0, 0, 0], [1, 1, 1], [0, 0, 0]]))
+    assert np.allclose(embed.weight.grad, np.array([[1, 1, 1], [0, 0, 0], [1, 1, 1], [0, 0, 0]]))
 
     embed = nn.Embedding.from_pretrained(weight)
     my = embed(mx)
     my.sum().backward()
     # 没有梯度
-    assert np.allclose(embed.weight.grad.data, np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]))
+    assert np.allclose(embed.weight.grad, np.array([[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]))

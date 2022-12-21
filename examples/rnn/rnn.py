@@ -96,7 +96,7 @@ test_data_loader = DataLoader(test_dataset, batch_size=batch_size, collate_fn=te
 
 num_class = len(pos_vocab)
 
-mode = 'RNN'  # RNN GRU
+mode = 'GRU'  # RNN GRU
 
 # 加载模型
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
@@ -109,17 +109,19 @@ optimizer = SGD(model.parameters(), lr=0.1)
 
 start = time.time()
 model.train()  # 确保应用了dropout
-for epoch in range(num_epoch):
-    total_loss = 0
-    for batch in tqdm(train_data_loader, desc=f"Training Epoch {epoch}"):
-        inputs, targets, mask = [x.to(device) for x in batch]
-        log_probs = model(inputs)
-        loss = nll_loss(log_probs[mask], targets[mask])  # 通过bool选择，mask部分不需要计算
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-    print(f"Loss: {total_loss:.2f}")
+
+with debug_mode():
+    for epoch in range(num_epoch):
+        total_loss = 0
+        for batch in tqdm(train_data_loader, desc=f"Training Epoch {epoch}"):
+            inputs, targets, mask = [x.to(device) for x in batch]
+            log_probs = model(inputs)
+            loss = nll_loss(log_probs[mask], targets[mask])  # 通过bool选择，mask部分不需要计算
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item()
+        print(f"Loss: {total_loss:.2f}")
 
 # 测试过程
 acc = 0

@@ -1,12 +1,13 @@
 from metagrad.tensor import Tensor
 import numpy as np
 
+
 def test_simple_add():
     x = Tensor(1, requires_grad=True)
     y = 2
     z = x + y
     z.backward()
-    assert x.grad.data == 1.0
+    assert x.grad == 1.0
 
 
 def test_array_add():
@@ -14,17 +15,17 @@ def test_array_add():
     y = Tensor([4, 5, 6], requires_grad=True)
 
     z = x + y
-    assert z.data.tolist() == [5., 7., 9.]
+    assert z.tolist() == [5., 7., 9.]
 
     # 如果
-    z.backward([1, 1, 1])
+    z.backward(np.array([1, 1, 1]))
 
-    assert x.grad.data.tolist() == [1, 1, 1]
-    assert y.grad.data.tolist() == [1, 1, 1]
+    assert x.grad.tolist() == [1, 1, 1]
+    assert y.grad.tolist() == [1, 1, 1]
 
     x += 1
     assert x.grad is None
-    assert x.data.tolist() == [2, 3, 4]
+    assert x.tolist() == [2, 3, 4]
 
 
 def test_broadcast_add():
@@ -41,10 +42,10 @@ def test_broadcast_add():
 
     z = x + y  # (2,3)
 
-    z.backward(Tensor(np.ones_like(x.data)))  # grad.shape == z.shape
+    z.backward(np.ones_like(x.data))  # grad.shape == z.shape
 
-    assert x.grad.data.tolist() == np.ones_like(x.data).tolist()
-    assert y.grad.data.tolist() == np.array([2, 2, 2]).tolist()
+    assert x.grad.tolist() == np.ones_like(x.data).tolist()
+    assert y.grad.tolist() == np.array([2, 2, 2]).tolist()
 
 
 def test_broadcast_add2():
@@ -53,7 +54,7 @@ def test_broadcast_add2():
 
     z = x + y  # (2,3)
 
-    z.backward(Tensor(np.ones_like(x.data)))  # grad.shape == z.shape
+    z.backward(np.ones_like(x.data))  # grad.shape == z.shape
 
-    assert x.grad.data.tolist() == np.ones_like(x.data).tolist()
-    assert y.grad.data.tolist() == (np.ones_like(y.data) * 2).tolist()
+    assert x.grad.tolist() == np.ones_like(x.data).tolist()
+    assert y.grad.tolist() == (np.ones_like(y.data) * 2).tolist()

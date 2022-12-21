@@ -24,8 +24,8 @@ def test_binary_cross_entropy():
     mo.backward()
     to.backward()
 
-    assert np.allclose(mx.grad.data,
-                       tx.grad.data)
+    assert np.allclose(mx.grad,
+                       tx.grad)
 
 
 def test_cross_entropy():
@@ -45,7 +45,7 @@ def test_cross_entropy():
     mo.backward()
     to.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_cross_entropy_class_indices():
@@ -65,7 +65,7 @@ def test_cross_entropy_class_indices():
     mo.backward()
     to.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_random():
@@ -87,4 +87,4 @@ def test_random():
     mo.backward()
     to.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)

@@ -1,4 +1,5 @@
 from metagrad.tensor import Tensor
+import numpy as np
 
 
 def test_simple_mean():
@@ -9,16 +10,16 @@ def test_simple_mean():
 
     y.backward()
     # 均值的梯度均分到了每个元素上
-    assert x.grad.data.tolist() == [1 / 3, 1 / 3, 1 / 3]
+    assert x.grad.tolist() == [1 / 3, 1 / 3, 1 / 3]
 
 
 def test_mean_with_grad():
     x = Tensor([1, 2, 3], requires_grad=True)
     y = x.mean()
 
-    y.backward(Tensor(3))
+    y.backward(np.array(3))
 
-    assert x.grad.data.tolist() == [1, 1, 1]
+    assert x.grad.tolist() == [1, 1, 1]
 
 
 def test_matrix_mean():
@@ -28,7 +29,7 @@ def test_matrix_mean():
 
     y.backward()
 
-    assert x.grad.data.tolist() == [[1 / 6, 1 / 6, 1 / 6], [1 / 6, 1 / 6, 1 / 6]]
+    assert x.grad.tolist() == [[1 / 6, 1 / 6, 1 / 6], [1 / 6, 1 / 6, 1 / 6]]
 
 
 def test_matrix_with_axis():
@@ -38,9 +39,9 @@ def test_matrix_with_axis():
     assert y.shape == (3,)
     assert y.data.tolist() == [2.5, 3.5, 4.5]
 
-    y.backward([1, 1, 1])
+    y.backward(np.array([1, 1, 1]))
 
-    assert x.grad.data.tolist() == [[0.5, 0.5, 0.5], [0.5, 0.5, 0.5]]
+    assert x.grad.tolist() == [[0.5, 0.5, 0.5], [0.5, 0.5, 0.5]]
 
 
 def test_matrix_with_keepdims():
@@ -48,6 +49,6 @@ def test_matrix_with_keepdims():
     y = x.mean(axis=1, keepdims=True)  # keepdims = True
     assert y.shape == (2, 1)
     assert y.data.tolist() == [[2], [5]]
-    y.backward([[3], [3]])
+    y.backward(np.array([[3], [3]]))
 
-    assert x.grad.data.tolist() == [[1, 1, 1], [1, 1, 1]]
+    assert x.grad.tolist() == [[1, 1, 1], [1, 1, 1]]

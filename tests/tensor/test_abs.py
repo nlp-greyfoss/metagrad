@@ -7,8 +7,8 @@ def test_abs():
     x = Tensor([-1, 200, 0], requires_grad=True, device=device)
     y = abs(x)
 
-    assert y.data.tolist() == [1, 200, 0]
+    assert y.tolist() == [1, 200, 0]
 
-    y.backward([2, 2, 2])
+    y.backward(device.xp.array([2, 2, 2]))
 
-    assert x.grad.data.tolist() == [-2, 2, 0]
+    assert x.grad.tolist() == [-2, 2, 0]

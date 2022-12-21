@@ -8,8 +8,9 @@ from typing import List, Optional, Tuple, Dict, Iterable, Union, Iterator, Set
 
 import metagrad.functions as F
 from metagrad import init
+from metagrad.cuda import GpuDevice
 from metagrad.paramater import Parameter
-from metagrad.tensor import Tensor, no_grad
+from metagrad.tensor import Tensor, no_grad, float_type
 
 
 def _addindent(s_, numSpaces):
@@ -354,7 +355,7 @@ class Linear(Module):
 
 class Embedding(Module):
     def __init__(self, num_embeddings: int, embedding_dim: int, _weight: Optional[Tensor] = None,
-                 dtype=None, device=None, padding_idx: Optional[int] = None) -> None:
+                 dtype=float_type, device=None, padding_idx: Optional[int] = None) -> None:
         '''
         一个存储固定大小词汇表嵌入的查找表，可以通过索引(列表)直接访问，而不是one-hot向量。
         :param num_embeddings: 词汇表大小
@@ -649,11 +650,10 @@ class GRUCell(RNNCellBase):
 
         i_r, i_z, i_g = F.chunk(input_trans, 3, -1)
         h_r, h_z, h_g = F.chunk(hidden_trans, 3, -1)
-
         r = F.sigmoid(i_r + h_r)  # 重置门
         z = F.sigmoid(i_z + h_z)  # 更新门
-
-        h_next = z * h + (z.dtype.type(1) - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
+        # todo question
+        h_next = z * h + (Tensor.ones_like(z) - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
         return h_next, None
 
 
@@ -707,7 +707,6 @@ class RNNBase(Module):
         # 沿着input时间步进行遍历
         for t in range(n_steps):
             inp = input[t]
-
             h, c = cell(inp, h, c)
             hs.append(h)
 

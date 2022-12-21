@@ -60,14 +60,12 @@ class ELU(Function):
         return grad * mask
 
 
-def logsumexp(x: Tensor, axis=-1):
-    b = x.max(axis=axis, keepdims=True)
-    return b + (x - b).exp().sum(axis=axis, keepdims=True).log()
-
-
 class Sigmoid(Function):
     def forward(self, x: NdArray) -> NdArray:
         xp = get_array_module(x)
+
+        # assert xp is np
+
         if xp is np:
             half = x.dtype.type(0.5)
             y = np.tanh(x * half) * half + half
@@ -165,18 +163,48 @@ def softmax(x: Tensor, axis=-1):
     return y / y.sum(axis=axis, keepdims=True)
 
 
+def _logsumexp(x: NdArray, axis=-1):
+    xp = get_array_module(x)
+    b = x.max(axis=axis, keepdims=True)
+    y = x - b
+    xp.exp(y, out=y)
+    s = y.sum(axis=axis, keepdims=True)
+    xp.log(s, out=s)
+    b += s
+    return b
+
+
+class LogSoftmax(Function):
+
+    def __init__(self, axis=-1):
+        super().__init__()
+        self.axis = axis
+
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+
+        y = x - _logsumexp(x, self.axis)
+        self.save_for_backward(y, xp)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        y, xp = self.saved_tensors
+        return grad - xp.exp(y) * grad.sum(axis=self.axis, keepdims=True)
+
+
 def log_softmax(x: Tensor, axis=-1):
     '''
     :param x: logits
     :param axis:
     :return:
     '''
-    return x - logsumexp(x, axis)
+    return LogSoftmax(axis=axis)(x)
 
 
 def _reduction(errors: Tensor, method: str) -> Tensor:
     if method == "mean":
-        loss = errors.mean(axis=0)
+        loss = errors.mean()
     elif method == "sum":
         loss = errors.sum()
     else:
@@ -195,6 +223,7 @@ def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
     '''
     # 如果target是ont-hot向量
     if input.ndim == target.ndim and input.shape == target.shape:
+        print(f"target:{target}, input:{input}")
         errors = - target * input
     else:
         xp = input.xp
@@ -233,19 +262,58 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     return nll_loss(log_y, target, reduction)
 
 
-def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
+class Dropout(Function):
+
+    def __init__(self, p: float = 0.5):
+        '''
+        丢弃掩码 1代表保留，0代表丢弃 以1-p的概率生成输出为1伯努利分布，做了input的元素个数这么多次实验
+
+        Args:
+            p: dropout ratio 丢弃率
+        '''
+        super().__init__()
+        self.p = p
+
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+
+        if xp is np:
+            scale = x.dtype.type(1. / 1 - self.p)
+            flag = np.random.rand(*x.shape) >= self.p
+            mask = scale * flag
+            # 让输入乘上这个与之同shape的flag，然后除以1-p进行缩放，这样在测试时，可以原样输出
+            y = x * mask
+        else:
+            rand = xp.random.rand(*x.shape, dtype=np.float32)
+            scale = x.dtype.type(1. / (1 - self.p))
+            mask, y = cuda.elementwise(
+                'T x, R r, T scale, T p', 'T mask, T y',
+                '''
+                mask = (r >= p) * scale;
+                y = x * mask;
+                ''',
+                'dropout_fwd',
+            )(x, rand, scale, self.p)
+
+        self.save_for_backward(mask)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        mask, = self.saved_tensors
+        return grad * mask
+
+
+def dropout(x: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
     """
-    input: 输入
+    x: 输入
     p: dropout ratio 丢弃率
     training: 是否为训练阶段
     """
     if training:
-        # 丢弃掩码 1代表保留，0代表丢弃 以1-p的概率生成输出为1伯努利分布，做了input的元素个数这么多次实验
-        mask = input.device.xp.random.binomial(1, 1 - p, size=input.shape)
-        # 让输入乘上这个与之同shape的mask，然后除以1-p进行缩放，这样在测试时，可以原样输出
-        return input * Tensor(mask, requires_grad=False) / (1 - p)
+        return Dropout(p=p)(x)
     else:
-        return input
+        return x
 
 
 class Embedding(Function):
@@ -287,8 +355,8 @@ class Split(Function):
 
     def backward(self, *grad: List[NdArray]) -> NdArray:
         xp, axis, shape, dtype = self.saved_tensors
-        grads = [Tensor(xp.zeros(shape, dtype)) if g is None else Tensor(g) for g in grad]
-        return stack(grads, axis)
+        grads = [xp.zeros(shape, dtype) if g is None else g for g in grad]
+        return xp.stack(grads, axis=axis)
 
 
 def split(x: Tensor, axis: int = 0):
@@ -308,15 +376,18 @@ class Stack(Function):
 
     '''
 
-    def forward(self, *inputs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int) -> NdArray:
+    def forward(self, *inputs: Union[Tuple[NdArray, ...], List[NdArray]], axis: int) -> NdArray:
         xp = get_array_module(inputs[0])
         ret = xp.stack(inputs, axis=axis)
-        self.save_for_backward(axis)
+        self.save_for_backward(axis, xp)
         return ret
 
     def backward(self, grad: NdArray) -> NdArray:
-        axis, = self.saved_tensors
-        return split(Tensor(grad), axis)
+        axis, xp = self.saved_tensors
+
+        grads = xp.split(grad, grad.shape[axis], axis)
+        grads = [xp.squeeze(g, axis) for g in grads]  # 去掉维度axis
+        return tuple(grads)
 
 
 def stack(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
@@ -330,11 +401,11 @@ class Cat(Function):
 
     def forward(self, *inputs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = -1) -> NdArray:
         xp = get_array_module(inputs[0])
-        self.save_for_backward(inputs, axis)
+        self.save_for_backward(inputs, axis, xp)
         return xp.concatenate(inputs, axis)
 
     def backward(self, grad: NdArray) -> NdArray:
-        inputs, axis = self.saved_tensors
+        inputs, axis, xp = self.saved_tensors
         if len(inputs) == 1:
             return grad
 
@@ -342,7 +413,8 @@ class Cat(Function):
         sizes = np.array(
             [x.shape[axis] for x in inputs[:-1]]
         ).cumsum()  # 计算累积和
-        return chunk(Tensor(grad), sizes, axis)
+
+        return tuple(xp.array_split(grad, sizes, axis))
 
 
 def cat(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
@@ -364,8 +436,8 @@ class Chunk(Function):
 
     def backward(self, *grad: List[NdArray]) -> NdArray:
         xp, axis, shapes, dtype = self.saved_tensors
-        grads = [Tensor(xp.zeros(shape, dtype=dtype)) if g is None else Tensor(g) for g, shape in zip(grad, shapes)]
-        return cat(grads, axis)
+        grads = [xp.zeros(shape, dtype=dtype) if g is None else g for g, shape in zip(grad, shapes)]
+        return xp.concatenate(grads, axis)
 
 
 def chunk(input: Tensor, chunks: int, axis=0):

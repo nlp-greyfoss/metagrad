@@ -8,8 +8,8 @@ def test_simple_sub():
     y = Tensor(2, requires_grad=True)
     z = x - y
     z.backward()
-    assert x.grad.data == 1.0
-    assert y.grad.data == -1.0
+    assert x.grad == 1.0
+    assert y.grad == -1.0
 
 
 def test_array_sub():
@@ -19,10 +19,10 @@ def test_array_sub():
     z = x - y
     assert z.data.tolist() == [-3., -3., -3.]
 
-    z.backward(Tensor([1, 1, 1]))
+    z.backward(np.array([1, 1, 1]))
 
-    assert x.grad.data.tolist() == [1, 1, 1]
-    assert y.grad.data.tolist() == [-1, -1, -1]
+    assert x.grad.tolist() == [1, 1, 1]
+    assert y.grad.tolist() == [-1, -1, -1]
 
     x -= 0.1
     assert x.grad is None
@@ -36,7 +36,7 @@ def test_broadcast_sub():
     z = x - y  # shape (2, 3)
     assert z.data.tolist() == [[-6, -6, -6], [-3, -3, -3]]
 
-    z.backward(Tensor(np.ones_like(x.data)))
+    z.backward(np.ones_like(x.data))
 
-    assert x.grad.data.tolist() == [[1, 1, 1], [1, 1, 1]]
-    assert y.grad.data.tolist() == [-2, -2, -2]
+    assert x.grad.tolist() == [[1, 1, 1], [1, 1, 1]]
+    assert y.grad.tolist() == [-2, -2, -2]

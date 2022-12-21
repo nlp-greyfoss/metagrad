@@ -22,7 +22,7 @@ def test_simple_relu():
     y.backward()
     ty.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_relu():
@@ -40,4 +40,4 @@ def test_relu():
         y.sum().backward()
         ty.sum().backward()
 
-        assert np.allclose(mx.grad.data, tx.grad.data)
+        assert np.allclose(mx.grad, tx.grad)

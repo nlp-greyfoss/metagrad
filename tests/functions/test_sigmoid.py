@@ -21,7 +21,7 @@ def test_simple_sigmoid():
     y.backward()
     ty.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_sigmoid():
@@ -38,4 +38,4 @@ def test_sigmoid():
         y.sum().backward()
         ty.sum().backward()
 
-        assert np.allclose(mx.grad.data, tx.grad.data)
+        assert np.allclose(mx.grad, tx.grad)

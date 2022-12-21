@@ -5,6 +5,7 @@ import numpy as np
 
 from metagrad.dataset import Dataset
 
+
 T = TypeVar('T')  # 泛型
 # 输入是一个T列表，返回可以是任何类型
 _collate_fn_t = Callable[[List[T]], Any]

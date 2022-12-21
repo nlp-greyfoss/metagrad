@@ -3,7 +3,7 @@ import random
 from string import ascii_letters
 
 import metagrad.module as nn
-from metagrad.tensor import Tensor, cuda
+from metagrad.tensor import Tensor, cuda, debug_mode
 
 import metagrad.functions as F
 from unidecode import unidecode
@@ -12,10 +12,12 @@ from metagrad.optim import Adam, SGD
 from metagrad.loss import CrossEntropyLoss
 from tqdm import tqdm
 
+device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
+
 data_dir = "../data/rnn/names"
 
 lang2label = {
-    file_name.split(".")[0]: Tensor([i], dtype=np.int32)
+    file_name.split(".")[0]: Tensor([i], dtype=np.int32, device=device)
     for i, file_name in enumerate(os.listdir(data_dir))
 }
 
@@ -27,7 +29,7 @@ print(num_letters)
 
 
 def name2tensor(name):
-    tensor = Tensor.zeros((len(name), 1, num_letters))
+    tensor = Tensor.zeros((len(name), 1, num_letters), device=device)
     for i, char in enumerate(name):
         tensor[i, 0, char2idx[char]] = 1
     return tensor
@@ -67,8 +69,6 @@ test_dataset = [
     (tensor_names[i], target_langs[i])
     for i in test_idx
 ]
-
-device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
 
 
 class GRUModel(nn.Module):
@@ -111,7 +111,6 @@ start = time.time()
 for epoch in tqdm(range(num_epochs)):
     random.shuffle(train_dataset)
     for i, (name, label) in enumerate(train_dataset):
-        name, label = name.to(device), label.to(device)
         output = model(name)
         loss = criterion(output, label)
 
@@ -126,7 +125,6 @@ for epoch in tqdm(range(num_epochs)):
                 f"Loss: {loss.item():.4f}"
             )
 
-
 print(f"Training cost {time.time() - start}s")
 
 num_correct = 0
@@ -134,7 +132,7 @@ num_samples = len(test_dataset)
 
 model.eval()
 model.save("simple.pt")
-#model.load("simple.pt")
+# model.load("simple.pt")
 model.to_gpu(device)
 
 for name, label in test_dataset:

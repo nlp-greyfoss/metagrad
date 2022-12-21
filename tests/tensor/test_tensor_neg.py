@@ -11,7 +11,7 @@ def test_simple_neg():
 
     z.backward()
 
-    assert x.grad.data == -1
+    assert x.grad == -1
 
 
 def test_array_neg():
@@ -21,6 +21,6 @@ def test_array_neg():
 
     np.testing.assert_array_equal(z.data, [-1, -2, -3])
 
-    z.backward([1, 1, 1])
+    z.backward(np.array([1, 1, 1]))
 
-    np.testing.assert_array_equal(x.grad.data, [-1, -1, -1])
+    np.testing.assert_array_equal(x.grad, [-1, -1, -1])

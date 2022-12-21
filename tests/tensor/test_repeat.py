@@ -17,8 +17,8 @@ def test_simple_repeat():
 
     mz.sum().backward()
 
-    assert np.allclose(mx.grad.data,
-                       tx.grad.data)
+    assert np.allclose(mx.grad,
+                       tx.grad)
 
 
 def test_repeat():
@@ -34,5 +34,5 @@ def test_repeat():
 
     mz.sum().backward()
 
-    assert np.allclose(mx.grad.data,
-                       tx.grad.data)
+    assert np.allclose(mx.grad,
+                       tx.grad)

@@ -10,7 +10,7 @@ def test_simple_pow():
 
     z.backward()
 
-    assert x.grad.data == 4
+    assert x.grad == 4
 
 
 def test_array_pow():
@@ -22,4 +22,4 @@ def test_array_pow():
 
     z.backward([1, 1, 1])
 
-    assert x.grad.data.tolist() == [3, 12, 27]
+    assert x.grad.tolist() == [3, 12, 27]

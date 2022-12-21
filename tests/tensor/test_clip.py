@@ -11,7 +11,7 @@ def test_simple_clip():
     assert np.allclose(y.array(), x.array())
 
     y.backward(np.ones_like(x.array()))
-    assert x.grad.data.tolist() == [1, 1, 1, 1, 1]
+    assert x.grad.tolist() == [1, 1, 1, 1, 1]
 
 
 def test_clip_with_min():
@@ -22,7 +22,7 @@ def test_clip_with_min():
     assert y.array().tolist() == [3, 3, 3, 4, 5]
 
     y.backward(np.ones_like(x.array()))
-    assert x.grad.data.tolist() == [0, 0, 1, 1, 1]
+    assert x.grad.tolist() == [0, 0, 1, 1, 1]
 
 
 def test_clip_with_max():
@@ -33,7 +33,7 @@ def test_clip_with_max():
     assert y.array().tolist() == [1, 2, 3, 3, 3]
 
     y.backward(np.ones_like(x.array()))
-    assert x.grad.data.tolist() == [1, 1, 1, 0, 0]
+    assert x.grad.tolist() == [1, 1, 1, 0, 0]
 
 
 def test_clip():
@@ -43,5 +43,5 @@ def test_clip():
 
     assert y.array().tolist() == [3, 3, 3, 4, 5, 6, 6, 6, 6]
 
-    y.backward([2, 2, 2, 2, 2, 2, 2, 2, 2, ])
-    assert x.grad.data.tolist() == [0, 0, 2, 2, 2, 2, 0, 0, 0]
+    y.backward(np.array([2, 2, 2, 2, 2, 2, 2, 2, 2, ]))
+    assert x.grad.tolist() == [0, 0, 2, 2, 2, 2, 0, 0, 0]

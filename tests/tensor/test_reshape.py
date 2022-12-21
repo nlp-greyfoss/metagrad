@@ -8,7 +8,7 @@ def test_simple_reshape():
     z = x.reshape(-1)
     z.backward(np.ones(9))
 
-    assert x.grad.data.tolist() == np.ones_like(x.data).tolist()
+    assert x.grad.tolist() == np.ones_like(x.data).tolist()
 
 
 def test_reshape():
@@ -16,7 +16,7 @@ def test_reshape():
     z = x.reshape(3, 3)
     z.backward(np.ones((3, 3)))
 
-    assert x.grad.data.tolist() == np.ones_like(x.data).tolist()
+    assert x.grad.tolist() == np.ones_like(x.data).tolist()
 
 
 def test_matrix_reshape():
@@ -25,4 +25,4 @@ def test_matrix_reshape():
 
     z.backward(np.ones((4, 3)))
 
-    assert x.grad.data.tolist() == np.ones_like(x.data).tolist()
+    assert x.grad.tolist() == np.ones_like(x.data).tolist()

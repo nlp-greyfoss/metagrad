@@ -16,10 +16,10 @@ def test_simple_leaky_relu():
 
     assert np.allclose(y.data, ty.data)
 
-    y.backward(2)
+    y.backward(np.array(2))
     ty.backward(torch.tensor(2))
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_leaky_relu():
@@ -33,7 +33,7 @@ def test_leaky_relu():
 
     assert np.allclose(y.data, ty.data)
 
-    y.backward(Tensor.ones_like(mx))
+    y.backward(np.ones_like(mx))
     ty.backward(torch.ones_like(tx))
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)

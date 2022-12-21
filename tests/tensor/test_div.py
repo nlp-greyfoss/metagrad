@@ -11,8 +11,8 @@ def test_simple_div():
     y = Tensor(2, requires_grad=True)
     z = x / y
     z.backward()
-    assert x.grad.data == 0.5
-    assert y.grad.data == -0.25
+    assert x.grad == 0.5
+    assert y.grad == -0.25
 
 
 def test_array_div():
@@ -24,10 +24,10 @@ def test_array_div():
     assert z.data.tolist() == [0.5, 0.5, 0.5]
     assert x.data.tolist() == [1, 2, 3]
 
-    z.backward(Tensor([1, 1, 1]))
+    z.backward(np.array([1, 1, 1]))
 
-    np.testing.assert_array_almost_equal(x.grad.data, [0.5, 0.25, 1 / 6])
-    np.testing.assert_array_almost_equal(y.grad.data, [-0.25, -1 / 8, -1 / 12])
+    np.testing.assert_array_almost_equal(x.grad, [0.5, 0.25, 1 / 6])
+    np.testing.assert_array_almost_equal(y.grad, [-0.25, -1 / 8, -1 / 12])
 
     x /= 0.1
     assert x.grad is None
@@ -42,7 +42,7 @@ def test_broadcast_div():
 
     assert z.data.tolist() == [[0.25, 0.25, 0.25], [0.5, 0.5, 0.5]]
 
-    z.backward(Tensor([[1, 1, 1, ], [1, 1, 1]]))
+    z.backward(np.array([[1, 1, 1, ], [1, 1, 1]]))
 
-    assert x.grad.data.tolist() == [[1/4, 1/4, 1/4], [1/4, 1/4, 1/4]]
-    assert y.grad.data.tolist() == [-3/16, -3/16, -3/16]
+    assert x.grad.tolist() == [[1/4, 1/4, 1/4], [1/4, 1/4, 1/4]]
+    assert y.grad.tolist() == [-3/16, -3/16, -3/16]

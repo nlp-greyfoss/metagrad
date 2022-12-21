@@ -11,7 +11,7 @@ def test_simple_mul():
     y = 2
     z = x * y
     z.backward()
-    assert x.grad.data == 2.0
+    assert x.grad == 2.0
 
 
 def test_array_mul():
@@ -26,10 +26,10 @@ def test_array_mul():
     # 对应元素相乘
     assert z.data.tolist() == [4, 10, 18]
 
-    z.backward(Tensor([1, 1, 1]))
+    z.backward(np.array([1, 1, 1]))
 
-    assert x.grad.data.tolist() == y.data.tolist()
-    assert y.grad.data.tolist() == x.data.tolist()
+    assert x.grad.tolist() == y.data.tolist()
+    assert y.grad.tolist() == x.data.tolist()
 
     x *= 0.1
     assert x.grad is None
@@ -48,10 +48,10 @@ def test_broadcast_mul():
 
     assert z.data.tolist() == [[7, 16, 27], [28, 40, 54]]
 
-    z.backward(Tensor([[1, 1, 1, ], [1, 1, 1]]))
+    z.backward(np.array([[1, 1, 1, ], [1, 1, 1]]))
 
-    assert x.grad.data.tolist() == [[7, 8, 9], [7, 8, 9]]
-    assert y.grad.data.tolist() == [5, 7, 9]
+    assert x.grad.tolist() == [[7, 8, 9], [7, 8, 9]]
+    assert y.grad.tolist() == [5, 7, 9]
 
 
 def test_broadcast_mul2():
@@ -62,7 +62,7 @@ def test_broadcast_mul2():
 
     assert z.data.tolist() == [[7, 16, 27], [28, 40, 54]]
 
-    z.backward(Tensor([[1, 1, 1, ], [1, 1, 1]]))
+    z.backward(np.array([[1, 1, 1, ], [1, 1, 1]]))
 
-    assert x.grad.data.tolist() == [[7, 8, 9], [7, 8, 9]]
-    assert y.grad.data.tolist() == [[5, 7, 9]]
+    assert x.grad.tolist() == [[7, 8, 9], [7, 8, 9]]
+    assert y.grad.tolist() == [[5, 7, 9]]

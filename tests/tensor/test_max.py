@@ -10,7 +10,7 @@ def test_simple_max():
     assert z.data == [9]
     z.backward()
 
-    assert x.grad.data.tolist() == [0, 0, 0, 0, 0, 1, 0]
+    assert x.grad.tolist() == [0, 0, 0, 0, 0, 1, 0]
 
 
 def test_simple_max2():
@@ -21,7 +21,7 @@ def test_simple_max2():
     z.backward()
 
     # 但是有两个最大值，所以梯度被均分了
-    assert x.grad.data.tolist() == [0, 0, 0, 0.5, 0, 0.5, 0]
+    assert x.grad.tolist() == [0, 0, 0, 0.5, 0, 0.5, 0]
 
 
 def test_matrix_max():
@@ -37,7 +37,7 @@ def test_matrix_max():
     z.backward()
 
     # 总共有6个9
-    np.testing.assert_array_almost_equal(x.grad.data, [[0, 0, 0, 1 / 6, 0],
+    np.testing.assert_array_almost_equal(x.grad, [[0, 0, 0, 1 / 6, 0],
                                                        [0, 0, 1 / 6, 1 / 6, 0],
                                                        [0, 0, 1 / 6, 0, 1 / 6],
                                                        [0, 0, 0, 1 / 6, 0]])
@@ -53,14 +53,14 @@ def test_matrix_max2():
     z = x.max(0)  # [8, 6, 9, 9, 9]
 
     assert z.data.tolist() == [8, 6, 9, 9, 9]
-    z.backward([1, 1, 1, 1, 1])
+    z.backward(np.array([1, 1, 1, 1, 1]))
 
     grad = [[0., 0., 0., 1 / 3, 0.],
             [0., 0., 0.5, 1 / 3, 0.],
             [0.5, 0.5, 0.5, 0, 1],
             [0.5, 0.5, 0., 1 / 3, 0.]]
 
-    np.testing.assert_array_almost_equal(x.grad.data, np.array(grad))
+    np.testing.assert_array_almost_equal(x.grad, np.array(grad))
 
 
 def test_matrix_with_axis():
@@ -85,7 +85,7 @@ def test_matrix_with_axis():
     my.sum().backward()
     ty.values.sum().backward()
 
-    np.testing.assert_array_almost_equal(tx.grad.data, mx.grad.data)
+    np.testing.assert_array_almost_equal(tx.grad, mx.grad)
 
 
 def test_matrix_with_negative_axis():
@@ -103,4 +103,4 @@ def test_matrix_with_negative_axis():
     my.sum().backward()
     ty.values.sum().backward()
 
-    np.testing.assert_array_almost_equal(tx.grad.data, mx.grad.data)
+    np.testing.assert_array_almost_equal(tx.grad, mx.grad)
