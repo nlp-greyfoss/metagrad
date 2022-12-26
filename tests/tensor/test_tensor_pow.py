@@ -1,3 +1,5 @@
+import numpy as np
+
 from metagrad.tensor import Tensor
 
 
@@ -20,6 +22,6 @@ def test_array_pow():
 
     assert z.data.tolist() == [1, 8, 27]
 
-    z.backward([1, 1, 1])
+    z.backward(np.array([1, 1, 1]))
 
     assert x.grad.tolist() == [3, 12, 27]

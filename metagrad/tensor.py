@@ -410,9 +410,9 @@ class Tensor:
     def T(self) -> "Tensor":
         return self.transpose(axes=None)
 
-    def _get_ops(self, name):
+    def _get_ops(self, name, *args, **kwargs):
         # 调用动态绑定的方法
-        return self.__getattribute__(name)
+        return self.__getattribute__(name, *args, **kwargs)
 
     def repeat(self, *sizes):
         if len(sizes) == 1:
@@ -484,7 +484,6 @@ class Tensor:
                     gxs = f.backward(*gys)
                 if not isinstance(gxs, tuple):
                     gxs = (gxs,)
-
                 for x, gx in zip(f.inputs, gxs):
                     if x.requires_grad and gx is not None:
                         assert x.shape == gx.shape, f"grad shape must match tensor shape in {f!r}, {gx.shape!r} != {x.shape!r}"
@@ -513,11 +512,9 @@ class Tensor:
 
 def register(name, fxn):
     def dispatch(*xs, **kwargs):
-
-        device = [x for x in xs if isinstance(x, Tensor)][0].device
-
-        xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
-
+        # device = [x for x in xs if isinstance(x, Tensor)][0].device
+        # xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
+        # xs = [x.data if isinstance(x, Tensor) else x for x in xs]
         return fxn()(*xs, **kwargs)
 
     if name in ["pow", "neg", "abs"]:
@@ -530,7 +527,7 @@ def register(name, fxn):
         setattr(Tensor, f'_{name}', dispatch)
 
     # 这几个方法都有__xx__, __ixx__, __rxx__ 魔法方法
-    if name in ["add", "sub", "mul", "truediv", "matmul"]:
+    if name in ["matmul"]:
         setattr(Tensor, f"__{name}__", dispatch)
         setattr(
             Tensor, f"__i{name}__", lambda self, x: self.assign(dispatch(self, x))

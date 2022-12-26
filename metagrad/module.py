@@ -652,8 +652,7 @@ class GRUCell(RNNCellBase):
         h_r, h_z, h_g = F.chunk(hidden_trans, 3, -1)
         r = F.sigmoid(i_r + h_r)  # 重置门
         z = F.sigmoid(i_z + h_z)  # 更新门
-        # todo question
-        h_next = z * h + (Tensor.ones_like(z) - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
+        h_next = z * h + (1 - z) * F.tanh(i_g + r * h_g)  # g = i_g + r * h_g  候选状态 = tanh(g)
         return h_next, None
 
 

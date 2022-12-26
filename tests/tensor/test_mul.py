@@ -13,6 +13,10 @@ def test_simple_mul():
     z.backward()
     assert x.grad == 2.0
 
+    z = 2 * x
+    z.backward()
+    assert x.grad == 4.0
+
 
 def test_array_mul():
     '''
@@ -32,7 +36,6 @@ def test_array_mul():
     assert y.grad.tolist() == x.data.tolist()
 
     x *= 0.1
-    assert x.grad is None
 
     # assert [0.10000000149011612, 0.20000000298023224, 0.30000001192092896] == [0.1, 0.2, 0.3]
     # assert x.data.tolist() == [0.1, 0.2, 0.3]

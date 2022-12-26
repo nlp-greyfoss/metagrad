@@ -204,7 +204,7 @@ def log_softmax(x: Tensor, axis=-1):
 
 def _reduction(errors: Tensor, method: str) -> Tensor:
     if method == "mean":
-        loss = errors.mean()
+        loss = errors.sum() / errors.shape[0]
     elif method == "sum":
         loss = errors.sum()
     else:
@@ -223,7 +223,6 @@ def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
     '''
     # 如果target是ont-hot向量
     if input.ndim == target.ndim and input.shape == target.shape:
-        print(f"target:{target}, input:{input}")
         errors = - target * input
     else:
         xp = input.xp

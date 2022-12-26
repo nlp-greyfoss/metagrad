@@ -2,10 +2,16 @@ from metagrad.tensor import Tensor
 import numpy as np
 
 
-def test_simple_add():
+def test_right_add_constant():
     x = Tensor(1, requires_grad=True)
-    y = 2
-    z = x + y
+    z = x + 2
+    z.backward()
+    assert x.grad == 1.0
+
+
+def test_left_add_constant():
+    x = Tensor(1, requires_grad=True)
+    z = 2 + x
     z.backward()
     assert x.grad == 1.0
 
@@ -24,7 +30,6 @@ def test_array_add():
     assert y.grad.tolist() == [1, 1, 1]
 
     x += 1
-    assert x.grad is None
     assert x.tolist() == [2, 3, 4]
 
 

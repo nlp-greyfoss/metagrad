@@ -12,49 +12,6 @@ ops.py保存所有运算操作相关的类
 '''
 
 
-class Function:
-    def __init__(self) -> None:
-        # 保存需要在backward()中使用的Tensor或其他对象(如Shape)
-        self.saved_tensors = []
-
-    def save_for_backward(self, *x: Any) -> None:
-        self.saved_tensors.extend(x)
-
-    def forward(self, *args: Any, **kwargs: Any) -> NdArray:
-        '''前向传播，进行真正运算的地方'''
-        raise NotImplementedError("You must implement the forward function for custom Function.")
-
-    def backward(self, grad: NdArray) -> Any:
-        '''实现反向传播，计算梯度'''
-        raise NotImplementedError("You must implement the backward method for your custom Function "
-                                  "to use it with backward mode AD.")
-
-    def __call__(self, *xs: "Tensor", **kwargs) -> "Tensor":
-        # [t.data for t in xs]遍历Tensor中的data(NdArray)值，参与实际计算的都是NumPy的数组。
-        ys = self.forward(*[t.data for t in xs], **kwargs)
-
-        requires_grad = any([t.requires_grad for t in xs])
-
-        return_tuple = True
-        if not isinstance(ys, tuple):
-            return_tuple = False
-            ys = (ys,)
-
-        outputs = [Tensor(y, device=xs[0].device, requires_grad=requires_grad) for y in ys]
-
-        if Config.backprop:
-            self.generation = max([x.generation for x in xs])
-            for output in outputs:  # 设定每个输出是由此函数得到的
-                output.set_creator(self)
-            self.inputs = xs  # 记录输入
-            self.outputs = [weakref.ref(output) for output in outputs]  # 通过弱引用保存输出
-
-        # 返回多个则通过元组
-        if return_tuple or len(outputs) > 1:
-            return tuple(outputs)
-        return outputs[0]
-
-
 def unbroadcast(grad: NdArray, in_shape: Tuple) -> NdArray:
     '''
     广播操作的逆操作，确保grad转换成in_shape的形状
@@ -78,6 +35,49 @@ def unbroadcast(grad: NdArray, in_shape: Tuple) -> NdArray:
             grad = grad.sum(axis=i, keepdims=True)
 
     return grad
+
+
+class Function:
+    def __init__(self) -> None:
+        # 保存需要在backward()中使用的Tensor或其他对象(如Shape)
+        self.saved_tensors = []
+
+    def save_for_backward(self, *x: Any) -> None:
+        self.saved_tensors.extend(x)
+
+    def forward(self, *args: Any, **kwargs: Any) -> NdArray:
+        '''前向传播，进行真正运算的地方'''
+        raise NotImplementedError("You must implement the forward function for custom Function.")
+
+    def backward(self, grad: NdArray) -> Any:
+        '''实现反向传播，计算梯度'''
+        raise NotImplementedError("You must implement the backward method for your custom Function "
+                                  "to use it with backward mode AD.")
+
+    def __call__(self, *xs: "Tensor", **kwargs) -> "Tensor":
+        raw_xs = [x.data if isinstance(x, Tensor) else x for x in xs]
+        # [t.data for t in xs]遍历Tensor中的data(NdArray)值，参与实际计算的都是NumPy的数组。
+        ys = self.forward(*raw_xs, **kwargs)
+        requires_grad = any([t.requires_grad for t in xs if isinstance(t, Tensor)])
+
+        return_tuple = True
+        if not isinstance(ys, tuple):
+            return_tuple = False
+            ys = (ys,)
+
+        outputs = [Tensor(y, requires_grad=requires_grad) for y in ys]
+
+        if Config.backprop:
+            self.generation = max([x.generation for x in xs if isinstance(x, Tensor)])
+            for output in outputs:  # 设定每个输出是由此函数得到的
+                output.set_creator(self)
+            self.inputs = xs  # 记录输入
+            self.outputs = [weakref.ref(output) for output in outputs]  # 通过弱引用保存输出
+
+        # 返回多个则通过元组
+        if return_tuple or len(outputs) > 1:
+            return tuple(outputs)
+        return outputs[0]
 
 
 def broadcast_grad_shape(original_shape, xp, grad: NdArray, axis=None, keepdims=None):
@@ -144,6 +144,24 @@ class Add(Function):
         return unbroadcast(grad, shape_x), unbroadcast(grad, shape_y)
 
 
+class AddConstant(Function):
+    '''
+    Tensor + 常量
+    '''
+
+    def forward(self, x: NdArray, c) -> NdArray:
+        return x + x.dtype.type(c)
+
+    def backward(self, grad: NdArray) -> NdArray:
+        return grad
+
+
+def add(self, rhs):
+    if np.isscalar(rhs):
+        return AddConstant()(self, rhs)
+    return Add()(self, rhs)
+
+
 class Sub(Function):
     def forward(self, x: NdArray, y: NdArray) -> NdArray:
         '''
@@ -155,6 +173,30 @@ class Sub(Function):
     def backward(self, grad: NdArray) -> Tuple[NdArray, NdArray]:
         shape_x, shape_y = self.saved_tensors
         return unbroadcast(grad, shape_x), unbroadcast(-grad, shape_y)
+
+
+def sub(self, rhs):
+    if np.isscalar(rhs):
+        return AddConstant()(self, -rhs)
+    return Sub()(self, rhs)
+
+
+class SubFromConstant(Function):
+    '''
+    常量 - Tensor
+    '''
+
+    def forward(self, x: NdArray, constant) -> NdArray:
+        return x.dtype.type(constant) - x
+
+    def backward(self, grad: NdArray) -> NdArray:
+        return -grad
+
+
+def rsub(self, rhs):
+    if np.isscalar(rhs):
+        return SubFromConstant()(self, rhs)
+    return Sub()(rhs, self)
 
 
 class Mul(Function):
@@ -174,8 +216,28 @@ class Mul(Function):
         return unbroadcast(grad * y, x.shape), unbroadcast(grad * x, y.shape)
 
 
-# Python3 只有 __truediv__ 相关魔法方法
-class TrueDiv(Function):
+def mul(self, rhs):
+    if np.isscalar(rhs):
+        return MulConstant()(self, rhs)
+    return Mul()(self, rhs)
+
+
+class MulConstant(Function):
+    """
+     Tensor * 常量
+    """
+
+    def forward(self, x: NdArray, c) -> NdArray:
+        # 乘法需要保存输入x和y，用于反向传播
+        self.save_for_backward(c)
+        return x * c
+
+    def backward(self, grad: NdArray) -> NdArray:
+        c, = self.saved_tensors
+        return grad * c
+
+
+class Div(Function):
 
     def forward(self, x: NdArray, y: NdArray) -> NdArray:
         '''
@@ -200,10 +262,51 @@ class TrueDiv(Function):
                 gx = grad / y;
                 gy = -gx * x / y;
                 ''',
-                'div_bw'
+                'div_bwd'
             )(x, y, grad)
 
         return unbroadcast(gx, x.shape), unbroadcast(gy, y.shape)
+
+
+def div(self, rhs):
+    if np.isscalar(rhs):
+        return MulConstant()(self, 1.0 / rhs)
+    return Div()(self, rhs)
+
+
+class DivFromConstant(Function):
+    """
+      常量/Tensor
+    """
+
+    def forward(self, x: NdArray, c) -> NdArray:
+        self.save_for_backward(x, c)
+        return c / x
+
+    def backward(self, grad: NdArray) -> NdArray:
+        x, c = self.saved_tensors
+        xp = get_array_module(grad)
+
+        if xp is np:
+            gx = -c * grad / (x ** 2)
+        else:
+            # 使用自定义内核代码加速
+            gx = cuda.elementwise(
+                'T x, T y, T grad',
+                'T gx',
+                '''
+                gx = -y * grad / (x*x);
+                ''',
+                'div_from_const_bwd'
+            )(x, c, grad)
+
+        return gx
+
+
+def rdiv(self, rhs):
+    if np.isscalar(rhs):
+        return DivFromConstant()(self, rhs)
+    return Div()(rhs, self)
 
 
 # ****聚合运算****
@@ -367,14 +470,25 @@ class Matmul(Function):
 
 # ****一元运算****
 class Pow(Function):
+    """
+    Tensor ** 常量
+    """
+
     def forward(self, x: NdArray, c: float) -> NdArray:
         self.save_for_backward(x, c)
         return x ** c
 
-    def backward(self, grad: NdArray) -> Tuple[NdArray, None]:
+    def backward(self, grad: NdArray) -> NdArray:
         x, c = self.saved_tensors
+        xp = get_array_module(x)
         # 把c当成一个常量，不需要计算梯度
-        return grad * c * x ** (c - 1), None
+        if xp is np:
+            return grad * c * x ** (c - 1)
+        else:
+            return cuda.elementwise(
+                'T x, T grad, T c', 'T gx',
+                'gx = c * pow(x, c - 1) * grad',
+                'pow_bwd')(x, grad, c)
 
 
 class Log(Function):
@@ -461,7 +575,7 @@ class Slice(Function):
         self.save_for_backward(x.shape, slices)
         return x[slices]
 
-    def backward(self, grad) -> Tuple[NdArray, None]:
+    def backward(self, grad) -> NdArray:
         x_shape, slices = self.saved_tensors
 
         xp = get_array_module(grad)
@@ -473,7 +587,7 @@ class Slice(Function):
         else:
             bigger_grad.scatter_add(slices, grad)
 
-        return bigger_grad, None
+        return bigger_grad
 
 
 class _IndexSelect(Function):
@@ -507,9 +621,9 @@ class Reshape(Function):
         self.save_for_backward(x.shape)
         return x.reshape(shape)
 
-    def backward(self, grad: NdArray) -> Tuple[NdArray, None]:
+    def backward(self, grad: NdArray) -> NdArray:
         x_shape, = self.saved_tensors
-        return grad.reshape(x_shape), None
+        return grad.reshape(x_shape)
 
 
 class ExpandDims(Function):
@@ -528,12 +642,12 @@ class Transpose(Function):
         self.save_for_backward(axes)
         return x.transpose(axes)
 
-    def backward(self, grad: NdArray) -> Any:
+    def backward(self, grad: NdArray) -> NdArray:
         axes, = self.saved_tensors
         if axes is None:
             return grad.transpose()
 
-        return grad.transpose(tuple(np.argsort(axes))), None
+        return grad.transpose(tuple(np.argsort(axes)))
 
 
 Permute = Transpose
@@ -542,10 +656,14 @@ Permute = Transpose
 class Repeat(Function):
     def forward(self, x: NdArray, repeats) -> NdArray:
         xp = get_array_module(x)
-        if isinstance(repeats, Tuple):
+
+        if isinstance(repeats, int):
+            repeats = repeats,
+        elif isinstance(repeats, Tuple):
             repeats = xp.array(repeats)
-        self.save_for_backward(x, repeats, xp)
-        return xp.tile(x, repeats.tolist())
+
+        self.save_for_backward(x, np.array(repeats), xp)
+        return xp.tile(x, repeats)
 
     def backward(self, grad: NdArray) -> Any:
         x, repeats, xp = self.saved_tensors
@@ -566,3 +684,14 @@ class Repeat(Function):
             grad = sum(xp.array_split(grad, repeat, dim))
 
         return grad
+
+
+def install_ops():
+    Tensor.__add__ = add
+    Tensor.__radd__ = add
+    Tensor.__sub__ = sub
+    Tensor.__rsub__ = rsub
+    Tensor.__mul__ = mul
+    Tensor.__rmul__ = mul
+    Tensor.__truediv__ = div
+    Tensor.__rtruediv__ = rdiv

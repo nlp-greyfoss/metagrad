@@ -2,12 +2,10 @@ import metagrad.functions as F
 from metagrad.tensor import Tensor, debug_mode, cuda
 import numpy as np
 
-device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
-
 
 def test_get_by_index():
-    x = Tensor([1, 2, 3, 4, 5, 6, 7], requires_grad=True, device=device)
-    z = x[Tensor(2)]
+    x = Tensor([1, 2, 3, 4, 5, 6, 7], requires_grad=True)
+    z = x[2]
 
     assert z.data == 3
     z.backward()
@@ -16,10 +14,10 @@ def test_get_by_index():
 
 
 def test_slice():
-    x = Tensor([1, 2, 3, 4, 5, 6, 7], requires_grad=True, device=device)
+    x = Tensor([1, 2, 3, 4, 5, 6, 7], requires_grad=True)
     z = x[2:4]
 
-    assert z.data.tolist() == [3, 4]
+    assert z.tolist() == [3, 4]
     z.backward(np.array([1, 1]))
 
     assert x.grad.tolist() == [0, 0, 1, 1, 0, 0, 0]
@@ -31,7 +29,7 @@ def test_matrix_slice():
                   [8., 6., 9., 7., 9.],
                   [8., 6., 1., 9., 8.]])
 
-    x = Tensor(a, requires_grad=True, device=device)
+    x = Tensor(a, requires_grad=True)
     z = x[1:3, 2:4]
 
     assert z.data.tolist() == [[9, 9], [9, 7]]
@@ -39,9 +37,9 @@ def test_matrix_slice():
 
     # 总共有6个9
     np.testing.assert_array_almost_equal(x.grad, [[0, 0, 0, 0, 0],
-                                                       [0, 0, 1, 1, 0],
-                                                       [0, 0, 1, 1, 0],
-                                                       [0, 0, 0, 0, 0]])
+                                                  [0, 0, 1, 1, 0],
+                                                  [0, 0, 1, 1, 0],
+                                                  [0, 0, 0, 0, 0]])
 
     assert x[0, 0].item() == 1
 
@@ -66,15 +64,14 @@ def test_integer_indexing():
     #         [28 29 (30) 31 32 33 34]], requires_grad = True)
     #
 
-    # ! z = x[Tensor([0, 2, 4]), Tensor([0, 1, 2])] 暂不支持元组Tensor作为索引
-    z = x[np.array([0, 2, 4]), np.array([0, 1, 2])]  # x[0,0] x[2,1] x[4,2]
+    z = x[(0, 2, 4), (0, 1, 2)]  # x[0,0] x[2,1] x[4,2]
 
     assert z.data.tolist() == [0, 15, 30]
 
     z.sum().backward()
 
     assert x.grad.tolist() == [[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                    [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                    [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]]
+                               [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                               [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                               [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                               [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]]
