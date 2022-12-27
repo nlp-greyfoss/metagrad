@@ -688,10 +688,14 @@ class Repeat(Function):
 
 def install_ops():
     Tensor.__add__ = add
+    Tensor.__iadd__ = lambda self, x: self.assign(add(self, x))
     Tensor.__radd__ = add
     Tensor.__sub__ = sub
     Tensor.__rsub__ = rsub
+    Tensor.__isub__ = lambda self, x: self.assign(sub(self, x))
     Tensor.__mul__ = mul
     Tensor.__rmul__ = mul
+    Tensor.__imul__ = lambda self, x: self.assign(mul(self, x))
     Tensor.__truediv__ = div
     Tensor.__rtruediv__ = rdiv
+    Tensor.__itruediv__ = lambda self, x: self.assign(div(self, x))

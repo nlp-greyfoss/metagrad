@@ -536,12 +536,6 @@ def register(name, fxn):
             Tensor, f"__r{name}__", lambda self, x: dispatch(x, self)
         )  # __r*__ 代表 other在操作符前, self在操作符后
 
-    # 原地操作需要单独处理
-    if name in ["add", "sub", "mul", "truediv"]:
-        setattr(
-            Tensor, f"__i{name}__", lambda self, x: self.assign(dispatch(self, x))
-        )
-
 
 def _register_ops(namespace):
     for name, cls in inspect.getmembers(namespace, inspect.isclass):

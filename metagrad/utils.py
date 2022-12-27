@@ -1,5 +1,6 @@
 import os
 import time
+from collections import namedtuple
 from datetime import datetime
 from typing import List
 
@@ -110,7 +111,7 @@ def make_batches(X, y, batch_size=32, shuffle=True):
     return X_batches, y_batches
 
 
-def loss_batch(model: nn.Module, loss_func, X_batch, y_batch, opt: Optimizer = None):
+def loss_batch(model, loss_func, X_batch, y_batch, opt: Optimizer = None):
     '''
     对批数据计算损失
     :param model: 模型
@@ -264,7 +265,7 @@ class Timer:
         return np.array(self.times).cumsum().tolist()
 
 
-def run_epoch(model: nn.Module, data_loader: DataLoader, loss: nn.Module, opt: Optimizer = None,
+def run_epoch(model, data_loader: DataLoader, loss, opt: Optimizer = None,
               activate_func=lambda x: x, evaluate_func=accuracy):
     '''
     进行一次迭代
@@ -337,6 +338,7 @@ def ngrams_iterator(token_list, ngrams):
         for x in _get_ngrams(n):
             yield " ".join(x)
 
+
 # def clip_grad_norm_(parameters, max_norm: float, norm_type: float = 2.0):
 #     if isinstance(parameters, Tensor):
 #         parameters = [parameters]
@@ -360,3 +362,87 @@ def ngrams_iterator(token_list, ngrams):
 #     for g in grads:
 #         g.mul_(clip_coef_clamped.to(g.device))
 #     return total_norm
+
+PackedSequence_ = namedtuple('PackedSequence', ['data', 'batch_sizes'])
+
+
+class PackedSequence(PackedSequence_):
+    pass
+
+
+def pack_padded_sequence(input, lengths, batch_first=False):
+    """
+
+    Args:
+        input: 可变长度的序列
+        lengths:  list(int) 每个批次元素的序列长度列表
+        batch_first:
+
+    Returns:
+
+    """
+    if batch_first:
+        input = input.transpose((0, 1))
+
+    steps = []
+    batch_sizes = []
+    lengths_iter = reversed(lengths)
+    current_length = next(lengths_iter)
+    batch_size = input.size(1)
+
+    for step, step_value in enumerate(input, 1):
+        steps.append(step_value[:batch_size])
+        batch_sizes.append(batch_size)
+
+        while step == current_length:
+            try:
+                new_length = next(lengths_iter)
+            except StopIteration:
+                current_length = None
+                break
+
+            if current_length > new_length:
+                raise ValueError("lengths array has to be sorted in decreasing order")
+
+            batch_size -= 1
+            current_length = new_length
+
+        if current_length is None:
+            break
+
+    return PackedSequence(F.cat(steps), batch_sizes)
+
+
+def pad_packed_sequence(sequence, batch_first=False):
+    """
+
+    Args:
+        sequence: 要填充的批次
+        batch_first:
+
+    Returns:
+
+    """
+    var_data, batch_sizes = sequence
+    max_batch_size = batch_sizes[0]
+    output = Tensor.zeros((len(batch_sizes), max_batch_size, *var_data.size()[1:]))
+
+    lengths = []
+    data_offset = 0
+    prev_batch_size = batch_sizes[0]
+
+    for i, batch_size in enumerate(batch_sizes):
+        output[i, :batch_size] = var_data[data_offset:data_offset + batch_size]
+        data_offset += batch_size
+
+        dec = prev_batch_size - batch_size
+        if dec > 0:
+            lengths.extend((i,) * dec)
+        prev_batch_size = batch_size
+
+    lengths.extend((i + 1,) * batch_size)
+    lengths.reverse()
+
+    if batch_first:
+        output = output.transpose((0, 1))
+    return output, lengths

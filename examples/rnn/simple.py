@@ -94,7 +94,7 @@ class GRUModel(nn.Module):
 
 
 hidden_size = 256
-learning_rate = 0.1
+learning_rate = 0.001
 num_epochs = 2
 print_interval = 3000
 

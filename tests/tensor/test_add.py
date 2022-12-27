@@ -30,6 +30,7 @@ def test_array_add():
     assert y.grad.tolist() == [1, 1, 1]
 
     x += 1
+    assert x.grad is None
     assert x.tolist() == [2, 3, 4]
 
 
