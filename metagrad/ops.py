@@ -237,7 +237,7 @@ class MulConstant(Function):
         return grad * c
 
 
-class Div(Function):
+class TrueDiv(Function):
 
     def forward(self, x: NdArray, y: NdArray) -> NdArray:
         '''
@@ -271,7 +271,7 @@ class Div(Function):
 def div(self, rhs):
     if np.isscalar(rhs):
         return MulConstant()(self, 1.0 / rhs)
-    return Div()(self, rhs)
+    return TrueDiv()(self, rhs)
 
 
 class DivFromConstant(Function):
@@ -306,7 +306,7 @@ class DivFromConstant(Function):
 def rdiv(self, rhs):
     if np.isscalar(rhs):
         return DivFromConstant()(self, rhs)
-    return Div()(rhs, self)
+    return TrueDiv()(rhs, self)
 
 
 # ****聚合运算****
