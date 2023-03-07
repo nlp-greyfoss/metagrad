@@ -1,5 +1,5 @@
 numpy
-#torch==1.9.0 # for test
+torch==1.9.0 # for test
 setuptools
 pandas
 tqdm
