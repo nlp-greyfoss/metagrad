@@ -83,7 +83,7 @@ def load_treebank():
 embedding_dim = 128
 hidden_dim = 128
 batch_size = 32
-num_epoch = 10
+num_epoch = 100
 n_layers = 2
 dropout = 0.2
 
@@ -100,7 +100,7 @@ mode = 'LSTM'  # RNN GRU
 
 # 加载模型
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
-model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=False, mode=mode)
+model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=True, mode=mode)
 model.to(device)
 
 # 训练过程
@@ -110,10 +110,10 @@ optimizer = SGD(model.parameters(), lr=0.1)
 start = time.time()
 model.train()  # 确保应用了dropout
 
-#with debug_mode():
-for epoch in range(num_epoch):
+# with debug_mode():
+for epoch in tqdm(range(num_epoch)):
     total_loss = 0
-    for batch in tqdm(train_data_loader, desc=f"Training Epoch {epoch}"):
+    for batch in train_data_loader:
         inputs, targets, mask = [x.to(device) for x in batch]
         log_probs = model(inputs)
         loss = nll_loss(log_probs[mask], targets[mask])  # 通过bool选择，mask部分不需要计算

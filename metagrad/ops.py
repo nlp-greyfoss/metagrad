@@ -80,7 +80,7 @@ class Function:
         return outputs[0]
 
 
-def broadcast_grad_shape(original_shape, xp, grad: NdArray, axis=None, keepdims=None):
+def broadcast_grad_shape(original_shape, xp, grad: NdArray, axis=None, keepdims=None) -> NdArray:
     '''
     在Mean、Sum、Squeeze等方法中，可能会丢失dim=1的维度，不能直接进行广播，需要调用此方法进行一些处理，广播到原来的维度
      Args:
@@ -403,6 +403,37 @@ class Clip(Function):
         x, x_min, x_max = self.saved_tensors
         mask = (x >= x_min) * (x <= x_max)
         return grad * mask
+
+
+class Gather(Function):
+    def forward(self, x: NdArray, axis: int, indices) -> NdArray:
+        xp = get_array_module(x)
+
+        self.save_for_backward(x.shape, xp, indices, axis)
+
+        return xp.take_along_axis(x, indices, axis)
+
+    def backward(self, grad: NdArray) -> NdArray:
+        x_shape, xp, indices, axis = self.saved_tensors
+
+        shape_ones = (1,) * indices.ndim
+        dest_dims = list(range(axis)) + [None] + list(range(axis + 1, indices.ndim))
+
+        fancy_index = []
+        for dim, n in zip(dest_dims, x_shape):
+            if dim is None:
+                fancy_index.append(indices)
+            else:
+                ind_shape = shape_ones[:dim] + (-1,) + shape_ones[dim + 1:]
+                fancy_index.append(xp.arange(n).reshape(ind_shape))
+
+        bigger_grad = xp.zeros(x_shape, dtype=grad.dtype)
+        if xp is np:
+            xp.add.at(bigger_grad, fancy_index, grad)
+        else:
+            cuda.cupyx.scatter_add(bigger_grad, tuple(fancy_index), grad)
+
+        return bigger_grad
 
 
 def dim_one(shape):

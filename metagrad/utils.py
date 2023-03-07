@@ -9,6 +9,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import metagrad.module as nn
+from metagrad.cuda import get_array_module
 from metagrad.dataloader import DataLoader
 from metagrad.optim import Optimizer
 from metagrad.tensor import Tensor
@@ -339,110 +340,27 @@ def ngrams_iterator(token_list, ngrams):
             yield " ".join(x)
 
 
-# def clip_grad_norm_(parameters, max_norm: float, norm_type: float = 2.0):
-#     if isinstance(parameters, Tensor):
-#         parameters = [parameters]
-#
-#     grads = [p.grad for p in parameters if p.grad is not None]
-#     max_norm = float(max_norm)
-#     norm_type = float(norm_type)
-#     if len(grads) == 0:
-#         return Tensor(0.)
-#
-#     device = grads[0].device
-#
-#     if norm_type == float('inf'):
-#         norms = [g.abs().max().to(device) for g in grads]
-#         total_norm = norms[0] if len(norms) == 1 else F.stack(norms).max()
-#     else:
-#         total_norm = F.norm(F.stack([F.norm(g, norm_type).to(device) for g in grads]), norm_type)
-#
-#     clip_coef = max_norm / (total_norm + 1e-6)
-#     clip_coef_clamped = F.clamp(clip_coef, max=1.0)
-#     for g in grads:
-#         g.mul_(clip_coef_clamped.to(g.device))
-#     return total_norm
+def clip_grad_norm_(parameters, max_norm: float, norm_type: float = 2.0):
+    if isinstance(parameters, Tensor):
+        parameters = [parameters]
 
-PackedSequence_ = namedtuple('PackedSequence', ['data', 'batch_sizes'])
+    grads = [p.grad for p in parameters if p.grad is not None]
+    max_norm = float(max_norm)
+    norm_type = float(norm_type)
 
+    xp = get_array_module(grads[0])
 
-class PackedSequence(PackedSequence_):
-    pass
+    if norm_type == float('inf'):
+        norms = [xp.max(xp.abs(g)) for g in grads]
+        total_norm = norms[0] if len(norms) == 1 else xp.max(xp.concatenate(norms))
+    else:
+        norm = xp.linalg.norm  # norm(g, norm_type)
+        total_norm = norm(xp.stack([norm(g, norm_type) for g in grads]), norm_type)
 
+    clip_coef = max_norm / (total_norm + 1e-6)
+    clip_coef_clamped = xp.clip(clip_coef, a_max=1.0)
 
-def pack_padded_sequence(input, lengths, batch_first=False):
-    """
+    for p in parameters:
+        p.grad *= clip_coef_clamped
 
-    Args:
-        input: 可变长度的序列
-        lengths:  list(int) 每个批次元素的序列长度列表
-        batch_first:
-
-    Returns:
-
-    """
-    if batch_first:
-        input = input.transpose((0, 1))
-
-    steps = []
-    batch_sizes = []
-    lengths_iter = reversed(lengths)
-    current_length = next(lengths_iter)
-    batch_size = input.size(1)
-
-    for step, step_value in enumerate(input, 1):
-        steps.append(step_value[:batch_size])
-        batch_sizes.append(batch_size)
-
-        while step == current_length:
-            try:
-                new_length = next(lengths_iter)
-            except StopIteration:
-                current_length = None
-                break
-
-            if current_length > new_length:
-                raise ValueError("lengths array has to be sorted in decreasing order")
-
-            batch_size -= 1
-            current_length = new_length
-
-        if current_length is None:
-            break
-
-    return PackedSequence(F.cat(steps), batch_sizes)
-
-
-def pad_packed_sequence(sequence, batch_first=False):
-    """
-
-    Args:
-        sequence: 要填充的批次
-        batch_first:
-
-    Returns:
-
-    """
-    var_data, batch_sizes = sequence
-    max_batch_size = batch_sizes[0]
-    output = Tensor.zeros((len(batch_sizes), max_batch_size, *var_data.size()[1:]))
-
-    lengths = []
-    data_offset = 0
-    prev_batch_size = batch_sizes[0]
-
-    for i, batch_size in enumerate(batch_sizes):
-        output[i, :batch_size] = var_data[data_offset:data_offset + batch_size]
-        data_offset += batch_size
-
-        dec = prev_batch_size - batch_size
-        if dec > 0:
-            lengths.extend((i,) * dec)
-        prev_batch_size = batch_size
-
-    lengths.extend((i + 1,) * batch_size)
-    lengths.reverse()
-
-    if batch_first:
-        output = output.transpose((0, 1))
-    return output, lengths
+    return total_norm

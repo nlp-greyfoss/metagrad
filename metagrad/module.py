@@ -11,7 +11,6 @@ from metagrad import init
 from metagrad.cuda import GpuDevice
 from metagrad.paramater import Parameter
 from metagrad.tensor import Tensor, no_grad, float_type
-from metagrad.utils import PackedSequence
 
 
 def _addindent(s_, numSpaces):
@@ -575,16 +574,25 @@ class RNNCellBase(Module):
 
 class RNNCell(RNNCellBase):
     def __init__(self, input_size, hidden_size: int, bias: bool = True, nonlinearity: str = 'tanh'):
+        '''
+        RNN单元基类
+        Args:
+            input_size: 输入大小
+            hidden_size:  隐藏大小
+            bias: 是否有偏置
+            nonlinearity: 激活函数 tanh | relu 仅用于RNN
+        '''
+
         super(RNNCell, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.bias = bias
         self.nonlinearity = nonlinearity
-        self.weight_ih = Parameter(Tensor.empty((hidden_size, input_size)))
-        self.weight_hh = Parameter(Tensor.empty((hidden_size, hidden_size)))
+        self.weight_ih = Parameter(Tensor.empty((hidden_size, input_size)))  # input to hidden weight
+        self.weight_hh = Parameter(Tensor.empty((hidden_size, hidden_size)))  # hidden to hidden weight
         if bias:
-            self.bias_ih = Parameter(Tensor.empty(hidden_size))
-            self.bias_hh = Parameter(Tensor.empty(hidden_size))
+            self.bias_ih = Parameter(Tensor.empty(hidden_size))  # input to hidden bias
+            self.bias_hh = Parameter(Tensor.empty(hidden_size))  # hidden to hidden bias
         else:
             self.register_parameter('bias_ih', None)
             self.register_parameter('bias_hh', None)
@@ -598,9 +606,9 @@ class RNNCell(RNNCellBase):
 
     def forward(self, input, hx) -> Tensor:
         if self.nonlinearity == "tanh":
-            func = F.RNNTanhCell
+            func = F.RNNTanhCell  # 以tanh作为激活函数的RNN单元
         else:
-            func = F.RNNReLUCell
+            func = F.RNNReLUCell  # 以ReLU作为激活函数的RNN单元
 
         return func(input, hx, self.weight_ih, self.weight_hh, self.bias_ih, self.bias_hh)
 
@@ -689,7 +697,6 @@ class RNNBase(Module):
         self.bias = bias
         self.batch_first = batch_first
         self.dropout = dropout
-        self.dropout_state = {}
         self.bidirectional = bidirectional
         num_directions = 2 if self.bidirectional else 1
 
@@ -733,37 +740,25 @@ class RNNBase(Module):
             init.uniform_(weight, -stdv, stdv)
 
     def forward(self, input, hx=None):
-        is_packed = isinstance(input, PackedSequence)
-        if is_packed:
-            input, batch_sizes = input
-            max_batch_size = batch_sizes[0]
-        else:
-            batch_sizes = None
-            max_batch_size = input.size(0) if self.batch_first else input.size(1)
+        batch_size = input.size(0) if self.batch_first else input.size(1)
 
         if hx is None:
             num_directions = 2 if self.bidirectional else 1
-            hx = Tensor.zeros((self.num_layers * num_directions, max_batch_size, self.hidden_size), device=input.device)
+            hx = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), device=input.device)
 
             if self.mode == 'LSTM':
                 hx = (hx, hx)
 
         func = F.RNN(
             self.mode,
-            self.input_size,
-            self.hidden_size,
             num_layers=self.num_layers,
             batch_first=self.batch_first,
             dropout=self.dropout,
             train=self.training,
-            bidirectional=self.bidirectional,
-            batch_sizes=batch_sizes,
-            dropout_state=self.dropout_state
+            bidirectional=self.bidirectional
         )
 
         output, hidden = func(input, self.all_weights, hx)
-        if is_packed:
-            output = PackedSequence(output, batch_sizes)
 
         return output, hidden
 

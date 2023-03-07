@@ -55,6 +55,7 @@ gpu_available = True
 
 try:
     import cupy
+    import cupyx
     from cupy import cuda
     from cupy import ndarray
     from cupy.cuda import Device as CudaDevice

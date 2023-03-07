@@ -435,6 +435,9 @@ class Tensor:
     def __array__(self):
         return self.to_cpu().array()
 
+    def detach(self):
+        return Tensor(self)
+
     def backward(self, grad: NdArray = None, retain_grad=False, create_graph=False) -> None:
         '''
         实现Tensor的反向传播

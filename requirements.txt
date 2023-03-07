@@ -1,8 +1,8 @@
-numpy==1.20.3
-torch==1.9.0 # for test
-setuptools==58.0.4
-pandas==1.3.4
-tqdm==4.62.3
-matplotlib==3.5.1
-scikit-learn==0.24.2 # using as tool
-cupy-cuda102==9.6.0
+numpy
+#torch==1.9.0 # for test
+setuptools
+pandas
+tqdm
+matplotlib
+scikit-learn # using as tool
+cupy-cuda102

@@ -4,7 +4,7 @@ import numpy as np
 
 from metagrad import cuda
 from metagrad.cuda import get_array_module
-from metagrad.ops import Function
+from metagrad.ops import Function, broadcast_grad_shape, unbroadcast
 from metagrad.tensor import Tensor, NdArray
 
 
@@ -157,10 +157,38 @@ def tanh(x: Tensor) -> Tensor:
     return Tanh()(x)
 
 
+class Softmax(Function):
+    def __init__(self, axis=1):
+        super().__init__()
+        self.axis = axis
+
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+
+        y = x - x.max(axis=self.axis, keepdims=True)
+        xp.exp(y, out=y)
+        y /= y.sum(axis=self.axis, keepdims=True)
+
+        self.save_for_backward(y, xp)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        y, xp = self.saved_tensors
+
+        gx = y * grad
+        dx = gx.sum(axis=self.axis, keepdims=True)
+        gx -= y * dx
+
+        return gx
+
+
 def softmax(x: Tensor, axis=-1):
-    b = x.max(axis=axis, keepdims=True)
-    y = (x - b).exp()
-    return y / y.sum(axis=axis, keepdims=True)
+    # b = x.max(axis=axis, keepdims=True)
+    # y = (x - b).exp()
+    # return y / y.sum(axis=axis, keepdims=True)
+
+    return Softmax(axis=axis)(x)
 
 
 def _logsumexp(x: NdArray, axis=-1):
@@ -341,6 +369,25 @@ def embedding(weight: Tensor, indices: Tensor) -> Tensor:
     return Embedding()(weight, indices)
 
 
+class MaskedSelect(Function):
+    def forward(self, x: NdArray, mask: NdArray) -> NdArray:
+        self.save_for_backward(x.shape, mask)
+        return x[mask]
+
+    def backward(self, grad: NdArray) -> NdArray:
+        x_shape, mask = self.saved_tensors
+        xp = get_array_module(grad)
+
+        bigger_grad = xp.zeros(x_shape, dtype=grad.dtype)
+
+        bigger_grad[mask] = grad
+        return bigger_grad
+
+
+def masked_select(x: Tensor, mask):
+    return MaskedSelect()(x, mask)
+
+
 class Split(Function):
     '''Stack的逆操作'''
 
@@ -458,6 +505,20 @@ def flip(x: Tensor, axis: Union[int, Tuple] = None):
     return Flip()(x, axis=axis)
 
 
+class Bmm(Function):
+    def forward(self, x: NdArray, y: NdArray) -> NdArray:
+        self.save_for_backward(x, y)
+        return x @ y
+
+    def backward(self, grad: NdArray) -> Tuple[NdArray, NdArray]:
+        x, y = self.saved_tensors
+        return grad @ y.swapaxes(-2, -1), x.swapaxes(-2, -1) @ grad
+
+
+def bmm(x: Tensor, y: Tensor):
+    return Bmm()(x, y)
+
+
 # 简单的norm实现
 def norm(input: Tensor, p: int = 2, axis=None, keepdims=False):
     assert p in (1, 2), "Only support L2 normalization(p=2) and L1 normalization(p=1)"
@@ -489,6 +550,16 @@ RNN 相关
 
 
 def linear(input, weight, bias=None):
+    '''
+    简单的代偏置的线性运算
+    Args:
+        input:
+        weight:
+        bias:
+
+    Returns:
+
+    '''
     output = input @ weight.T
     if bias is not None:
         output += bias
@@ -502,6 +573,7 @@ def RNNReLUCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
 
 
 def RNNTanhCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
+    # tanh(input * w_ih + b_ih + hidden * w_hh + b_hh)
     hy = tanh(linear(input, w_ih, b_ih) + linear(hidden, w_hh, b_hh))
     return hy
 
@@ -539,6 +611,18 @@ def GRUCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
 
 
 def StackedRNN(inners, num_layers, lstm=False, dropout_ratio=0, train=True):
+    '''
+
+    Args:
+        inners: 堆叠的RNN单元列表
+        num_layers: 层数
+        lstm: 是否为lstm
+        dropout_ratio: dropout 比率
+        train: 是否为训练阶段
+
+    Returns:
+
+    '''
     num_directions = len(inners)
     total_layers = num_layers * num_directions
 
@@ -559,7 +643,7 @@ def StackedRNN(inners, num_layers, lstm=False, dropout_ratio=0, train=True):
 
             input = cat(all_output, input.ndim - 1)
 
-            if dropout_ratio != 0 and i < num_layers - 1:
+            if dropout_ratio != 0 and i < num_layers - 1:  # 如果不是最后一层，且dropout不为零
                 input = dropout(input, p=dropout_ratio, training=train)
 
         if lstm:
@@ -578,100 +662,15 @@ def StackedRNN(inners, num_layers, lstm=False, dropout_ratio=0, train=True):
     return forward
 
 
-def VariableRecurrent(batch_sizes, inner):
-    def forward(input, hidden, weight):
-        output = []
-        input_offset = 0
-        last_batch_size = batch_sizes[0]
-        hiddens = []
-        flat_hidden = not isinstance(hidden, tuple)
-        if flat_hidden:
-            hiddens = (hidden,)
-
-        for batch_size in batch_sizes:
-            step_input = input[input_offset: input_offset + batch_size]
-            input_offset += batch_size
-
-            dec = last_batch_size - batch_size
-            if dec > 0:
-                hiddens.append(tuple(h[-dec:] for h in hidden))
-                hidden = tuple(h[:-dec] for h in hidden)
-
-            last_batch_size = batch_size
-
-            if flat_hidden:
-                hidden = (inner(step_input, hidden[0], *weight))
-            else:
-                hidden = inner(step_input, hidden, *weight)
-
-            output.append(hidden[0])
-
-        hiddens.append(hidden)
-        hiddens.reverse()
-
-        hidden = tuple(cat(h, 0) for h in zip(*hiddens))
-        assert hidden[0].size(0) == batch_sizes[0]
-        if flat_hidden:
-            hidden = hidden[0]
-        output = cat(output, 0)
-
-        return hidden, output
-
-    return forward
-
-
-def VariableRecurrentReverse(batch_sizes, inner):
-    def forward(input, hidden, weight):
-        output = []
-        input_offset = input.size(0)
-        last_batch_size = batch_sizes[-1]
-        initial_hidden = hidden
-        flat_hidden = not isinstance(hidden, tuple)
-        if flat_hidden:
-            hidden = (hidden,)
-            initial_hidden = (initial_hidden,)
-        hidden = tuple(h[:batch_sizes[-1]] for h in hidden)
-        for batch_size in reversed(batch_sizes):
-            inc = batch_size - last_batch_size
-            if inc > 0:
-                hidden = tuple(cat((h, ih[last_batch_size:batch_size]), 0)
-                               for h, ih in zip(hidden, initial_hidden))
-            last_batch_size = batch_size
-            step_input = input[input_offset - batch_size:input_offset]
-            input_offset -= batch_size
-
-            if flat_hidden:
-                hidden = (inner(step_input, hidden[0], *weight),)
-            else:
-                hidden = inner(step_input, hidden, *weight)
-            output.append(hidden[0])
-
-        output.reverse()
-        output = cat(output, 0)
-        if flat_hidden:
-            hidden = hidden[0]
-        return hidden, output
-
-    return forward
-
-
-def variable_recurrent_factory(batch_sizes):
-    def fac(inner, reverse=False):
-        if reverse:
-            return VariableRecurrentReverse(batch_sizes, inner)
-        else:
-            return VariableRecurrent(batch_sizes, inner)
-
-    return fac
-
-
 def Recurrent(inner, reverse=False):
     def forward(input, hidden, weight):
         output = []
+        #
         steps = range(input.size(0) - 1, -1, -1) if reverse else range(input.size(0))
 
         for i in steps:
             hidden = inner(input[i], hidden, *weight)
+            # tuple就是LSTM
             output.append(hidden[0] if isinstance(hidden, tuple) else hidden)
 
         if reverse:
@@ -684,9 +683,7 @@ def Recurrent(inner, reverse=False):
     return forward
 
 
-def AutogradRNN(mode, input_size, hidden_size, num_layers=1, batch_first=False,
-                dropout=0, train=True, bidirectional=False, batch_sizes=None,
-                dropout_state=None):
+def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bidirectional=False):
     if mode == 'RNN_RELU':
         cell = RNNReLUCell
     elif mode == 'RNN_TANH':
@@ -696,15 +693,10 @@ def AutogradRNN(mode, input_size, hidden_size, num_layers=1, batch_first=False,
     else:
         cell = GRUCell
 
-    if batch_sizes is None:
-        rec_factory = Recurrent
-    else:
-        rec_factory = variable_recurrent_factory(batch_sizes)
-
     if bidirectional:
-        layer = (rec_factory(cell), rec_factory(cell, reverse=True))
+        layer = (Recurrent(cell), Recurrent(cell, reverse=True))
     else:
-        layer = (rec_factory(cell),)
+        layer = (Recurrent(cell),)
 
     func = StackedRNN(layer,
                       num_layers,
@@ -713,12 +705,12 @@ def AutogradRNN(mode, input_size, hidden_size, num_layers=1, batch_first=False,
                       train=train)
 
     def forward(input, weight, hidden):
-        if batch_first and batch_sizes is None:
+        if batch_first:
             input = input.transpose((1, 0, 2))
 
         nexth, output = func(input, hidden, weight)
 
-        if batch_first and batch_sizes is None:
+        if batch_first:
             output = output.transpose((1, 0, 2))
 
         return output, nexth

@@ -72,4 +72,5 @@ class DataLoader:
         return self.__next__()
 
     def __iter__(self):
+        self.reset()
         return self

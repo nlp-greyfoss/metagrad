@@ -45,6 +45,7 @@ class NGramDataset(Dataset):
 
 class FeedForwardNNLM(nn.Module):
     def __init__(self, vocab_size, embedding_dim, window_size, hidden_dim):
+        super(FeedForwardNNLM, self).__init__()
         # 单词嵌入E : 输入层 -> 嵌入层
         self.embeddings = nn.Embedding(vocab_size, embedding_dim)
         # 词嵌入层 -> 隐藏层
