@@ -23,7 +23,7 @@ from metagrad.cuda import (
 float_type = np.float32
 
 # 设置显示精度
-np.set_printoptions(precision=4)
+np.set_printoptions(precision=6)
 # 抑制小数的科学计数法显示
 np.set_printoptions(suppress=True)
 

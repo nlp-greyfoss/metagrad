@@ -4,6 +4,7 @@ import torch
 import metagrad.functions as F
 from metagrad.tensor import Tensor, debug_mode, cuda
 
+
 def test_simple_tanh():
     x = 2.0
 
@@ -35,4 +36,4 @@ def test_tanh():
         y.sum().backward()
         ty.sum().backward()
 
-        assert np.allclose(mx.grad, tx.grad.numpy())
+        assert np.allclose(mx.grad, tx.grad)
