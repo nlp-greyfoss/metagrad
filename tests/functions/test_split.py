@@ -74,7 +74,5 @@ def test_single_split():
     (my[0]).sum().backward()
     (ty[0]).sum().backward()
 
-    print(mx.grad)
-    print(tx.grad)
 
     assert np.allclose(mx.grad, tx.grad)
