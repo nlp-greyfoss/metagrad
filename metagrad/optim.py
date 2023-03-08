@@ -65,16 +65,15 @@ class SGD(Optimizer):
     def step(self) -> None:
         with no_grad():
             for group in self.param_groups:
-                #weight_decay = group['weight_decay']
+                weight_decay = group['weight_decay']
                 lr = group['lr']
 
                 for p in group['params']:
-                    # d_p = p.grad  # 我们不能直接修改p.grad
+                    d_p = p.grad  # 我们不能直接修改p.grad
                     # 对于设置了weight_decay的参数
-                    #if weight_decay != 0:
-                    #    d_p += weight_decay * p
-                    #p -= d_p * lr
-                    p -= p.grad * lr
+                    if weight_decay != 0:
+                        d_p += weight_decay * p
+                    p -= d_p * lr
 
 
 class Adam(Optimizer):

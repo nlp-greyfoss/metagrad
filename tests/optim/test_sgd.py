@@ -35,4 +35,7 @@ def test_weight_decay():
 
     optimizer.step()
     weight_1 = model.weight.data.copy()
+    print(weight_0.data)
+    print(weight_1.data)
+
     assert np.allclose(weight_0.data, weight_1.data)

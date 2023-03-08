@@ -429,7 +429,7 @@ class Gather(Function):
 
         bigger_grad = xp.zeros(x_shape, dtype=grad.dtype)
         if xp is np:
-            xp.add.at(bigger_grad, fancy_index, grad)
+            xp.add.at(bigger_grad, tuple(fancy_index), grad)
         else:
             cuda.cupyx.scatter_add(bigger_grad, tuple(fancy_index), grad)
 

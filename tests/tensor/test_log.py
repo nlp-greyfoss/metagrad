@@ -17,7 +17,7 @@ def test_simple_log():
 
 
 def test_array_log():
-    x = Tensor([-1, -2, 3], requires_grad=True)
+    x = Tensor([1, 2, 3], requires_grad=True)
     z = x.log()
 
     np.testing.assert_array_almost_equal(z.data, np.log([1, 2, 3]))
