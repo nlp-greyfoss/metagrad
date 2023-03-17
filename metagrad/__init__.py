@@ -5,3 +5,10 @@ import metagrad.ops
 from metagrad import cuda
 
 ops.install_ops()
+
+from metagrad.tensor import no_grad
+from metagrad.tensor import ensure_tensor
+from metagrad.tensor import ensure_array
+from metagrad.tensor import float_type
+from metagrad.tensor import debug_mode
+

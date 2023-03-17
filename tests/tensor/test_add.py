@@ -64,3 +64,12 @@ def test_broadcast_add2():
 
     assert x.grad.tolist() == np.ones_like(x.data).tolist()
     assert y.grad.tolist() == (np.ones_like(y.data) * 2).tolist()
+
+
+def test_add_():
+    x = Tensor(1, requires_grad=True)
+    x.add_(3, alpha=2)
+    assert x.data == 7
+    assert x.grad is None
+    x.add_(Tensor(6), alpha=-1)
+    assert x.data == 1

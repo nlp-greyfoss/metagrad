@@ -156,10 +156,22 @@ class AddConstant(Function):
         return grad
 
 
+def get_numpy_data(tensor):
+    if isinstance(tensor, Tensor):
+        return tensor.data
+    return tensor
+
+
 def add(self, rhs):
     if np.isscalar(rhs):
         return AddConstant()(self, rhs)
     return Add()(self, rhs)
+
+
+def add_(self, other, alpha=1):
+    other = get_numpy_data(other)
+    self.data = self.data + alpha * other
+    return self
 
 
 class Sub(Function):
@@ -220,6 +232,32 @@ def mul(self, rhs):
     if np.isscalar(rhs):
         return MulConstant()(self, rhs)
     return Mul()(self, rhs)
+
+
+def mul_(self, other):
+    other = get_numpy_data(other)
+    self.data = self.data * other
+    return self
+
+
+def addcmul_(self, other1, other2, value=1):
+    """
+    self.data += value * other1 * other2
+    """
+    other1 = get_numpy_data(other1)
+    other2 = get_numpy_data(other2)
+    self.data = self.data + value * other1 * other2
+    return self
+
+
+def addcdiv_(self, other1, other2, value=1):
+    """
+    self.data += value * other1 / other2
+    """
+    other1 = get_numpy_data(other1)
+    other2 = get_numpy_data(other2)
+    self.data = self.data + value * other1 / other2
+    return self
 
 
 class MulConstant(Function):
@@ -730,3 +768,7 @@ def install_ops():
     Tensor.__truediv__ = div
     Tensor.__rtruediv__ = rdiv
     Tensor.__itruediv__ = lambda self, x: self.assign(div(self, x))
+    Tensor.add_ = add_
+    Tensor.mul_ = mul_
+    Tensor.addcmul_ = addcmul_
+    Tensor.addcdiv_ = addcdiv_

@@ -41,7 +41,7 @@ tensor_names = []
 target_langs = []
 
 for file in os.listdir(data_dir):
-    with open(os.path.join(data_dir, file)) as f:
+    with open(os.path.join(data_dir, file), encoding="utf-8") as f:
         lang = file.split(".")[0]
         names = [unidecode(line.rstrip()) for line in f]
         for name in names:

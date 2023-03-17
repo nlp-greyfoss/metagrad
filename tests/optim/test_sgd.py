@@ -6,6 +6,7 @@ import metagrad.functions as F
 from metagrad.tensor import Tensor
 
 
+
 def test_weight_decay():
     weight_decay = 0.5
     X = Tensor(np.random.rand(5, 2))

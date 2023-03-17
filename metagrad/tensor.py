@@ -169,7 +169,7 @@ class Tensor:
 
     @data.setter
     def data(self, new_data: NdArray) -> None:
-        self._data = ensure_array(new_data, self.device)
+        self._data = ensure_array(new_data, device=self.device)
         # 重新赋值后就没有梯度了
         self._grad = None
 
@@ -288,6 +288,9 @@ class Tensor:
     def float_(self) -> "Tensor":
         self.data = self.data.astype(float_type)
         return self
+
+    def is_floating_point(self):
+        return isinstance(self.data, np.floating)
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
         xp = self.device.xp
