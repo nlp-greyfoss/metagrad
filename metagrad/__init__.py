@@ -12,3 +12,5 @@ from metagrad.tensor import ensure_array
 from metagrad.tensor import float_type
 from metagrad.tensor import debug_mode
 
+from metagrad import module as nn
+from metagrad import optim

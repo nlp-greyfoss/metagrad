@@ -1,12 +1,8 @@
 import math
-from collections import defaultdict
-from copy import deepcopy
-from itertools import chain
-from typing import Dict, Any, Tuple, Optional
+from collections import defaultdict, Counter
 
-from metagrad.paramater import Parameter
-from metagrad.tensor import Tensor
 from metagrad import no_grad
+from metagrad.tensor import Tensor
 
 
 class Optimizer:
@@ -166,3 +162,184 @@ class Adam(Optimizer):
                     denom = (exp_avg_sq.sqrt() / bias_sqrt).add_(eps)
 
                     param.addcdiv_(exp_avg, denom, value=-step_size)
+
+
+class LRScheduler:
+    def __init__(self, optimizer: Optimizer, last_epoch: int = -1, verbose: bool = False):
+        self.optimizer = optimizer
+        if last_epoch == -1:
+            for group in optimizer.param_groups:
+                # 设置初始值
+                group.setdefault("initial_lr", group["lr"])
+        else:
+            for i, group in enumerate(optimizer.param_groups):
+                if 'initial_lr' not in group:
+                    raise KeyError(f"param 'initial_lr' is not specified "
+                                   "in param_groups[{i}] when resuming an optimizer")
+        # 保存param_groups的初始学习率
+        self.base_lrs = [group["initial_lr"] for group in optimizer.param_groups]
+        self.last_epoch = last_epoch
+        self.verbose = verbose
+        self._initial_step()
+
+    def get_lr(self):
+        return NotImplementedError
+
+    def get_last_lr(self):
+        return self._last_lr
+
+    def print_lr(self, is_verbose, group, lr, epoch=None):
+        """如果 is_verbose为True， 打印当前的学习率"""
+        if is_verbose:
+            if epoch is None:
+                print(f"Adjusting learning rate of group {group} to {lr:.4e}.")
+            else:
+                epoch_str = ("%.2f" if isinstance(epoch, float) else "%.5d") % epoch
+                print(f'Epoch {epoch_str}: adjusting learning rate of group {group} to {lr:.4e}.')
+
+    def _initial_step(self):
+        """初始化step count并调用一次step"""
+        self.optimizer._step_count = 0
+        self._step_count = 0
+        self.step()
+
+    def step(self, epoch=None):
+
+        self._step_count += 1
+
+        if epoch is None:
+            self.last_epoch += 1
+        else:
+            self.last_epoch = epoch
+
+        for i, data in enumerate(zip(self.optimizer.param_groups, self.get_lr())):
+            param_group, lr = data
+            param_group["lr"] = lr  # 用新的学习率覆盖当前学习率
+            self.print_lr(self.verbose, i, lr, epoch)
+        # 保存最近一次学习率
+        self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
+
+
+class ExponentialLR(LRScheduler):
+    def __init__(self, optimizer, gamma, last_epoch=-1, verbose=False):
+        """
+        每个epoch通过gamma衰减每个parameter group的学习率，当last_epoch=-1，学习率设为初始值
+        :param optimizer: 优化器
+        :param gamma: 学习率衰减的乘法因子
+        :param last_epoch: 最后一次epoch的索引
+        :param verbose: 是否为每次更新打印信息
+        """
+        self.gamma = gamma
+        super().__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        if self.last_epoch == 0:
+            # 第一次迭代就是初始学习率
+            return [group["lr"] for group in self.optimizer.param_groups]
+        # 然后是当前学习率乘以gamma
+        return [group["lr"] * self.gamma for group in self.optimizer.param_groups]
+
+
+class StepLR(LRScheduler):
+    def __init__(self, optimizer, step_size, gamma=0.1, last_epoch=-1, verbose=False):
+        """
+        每step_size个epoch通过gamma衰减每个parameter group的学习率，当last_epoch=-1，学习率设为初始值
+
+        :param optimizer:
+        :param step_size:
+        :param gamma:
+        :param last_epoch:
+        :param verbose:
+        """
+        self.step_size = step_size
+        self.gamma = gamma
+        super().__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        if self.last_epoch == 0 or self.last_epoch % self.step_size != 0:
+            # 第一次迭代或在第一个step_size间隔内
+            return [group["lr"] for group in self.optimizer.param_groups]
+        # 然后是当前学习率乘以gamma
+        return [group["lr"] * self.gamma for group in self.optimizer.param_groups]
+
+
+class MultiStepLR(LRScheduler):
+    def __init__(self, optimizer, milestones, gamma=0.1, last_epoch=-1, verbose=False):
+        """
+        一旦epoch次数达到milestones中的次数，则通过gamma衰减每个parameter group的学习率，当last_epoch=-1，学习率设为初始值
+
+        :param optimizer:
+        :param milestones: epoch索引列表，注意必须是递增的
+        :param gamma:
+        :param last_epoch:
+        :param verbose:
+        """
+        self.milestones = Counter(milestones)
+        self.gamma = gamma
+        super().__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        if self.last_epoch not in self.milestones:
+            # 如果不在milestones内，则返回当前的学习率
+            return [group["lr"] for group in self.optimizer.param_groups]
+        # 然后是当前学习率乘以gamma的milestones[last_epoch]次
+        return [group["lr"] * self.gamma ** self.milestones[self.last_epoch] for group in self.optimizer.param_groups]
+
+
+class LambdaLR(LRScheduler):
+    def __init__(self, optimizer, lr_lambda, last_epoch=-1, verbose=False):
+        """
+        让每个parameter group的学习率为初始学习率乘以一个给定的函数lr_lambda
+        :param optimizer:
+        :param lr_lambda(function or list): 一个基于epoch计算乘法因子的函数；或是一个这样的函数列表，列表中每个函数
+                                            对应optimizer.param_groups的每个group
+        :param last_epoch:
+        :param verbose:
+        """
+        self.optimizer = optimizer
+
+        if not isinstance(lr_lambda, list) and not isinstance(lr_lambda, tuple):
+            self.lr_lambdas = [lr_lambda] * len(optimizer.param_groups)
+        else:
+            # 如果是列表的话必须和param_groups的大小一致
+            if len(lr_lambda) != len(optimizer.param_groups):
+                raise ValueError(f"Expected {len(optimizer.param_groups)} lr_lambdas, but got {len(lr_lambda)}")
+            self.lr_lambdas = list(lr_lambda)
+
+        super().__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        return [base_lr * lmbda(self.last_epoch) for lmbda, base_lr in zip(self.lr_lambdas, self.base_lrs)]
+
+
+class CosineAnnealingLR(LRScheduler):
+    pass
+
+
+class NoamLR(LRScheduler):
+    def __init__(self, optimizer, model_size, factor=1., warmup_steps=4000, last_epoch=-1, verbose=False):
+        """
+        参考 http://nlp.seas.harvard.edu/annotated-transformer 实现的Transformer提出的学习率衰减方法
+        在第一个warmup_steps内线性地增大学习率，然后按步长的平方倒数成比例地减小
+        :param optimizer: 优化器
+        :param model_size: 模型嵌入层大小
+        :param factor: 乘法因子
+        :param warmup_steps: 加热步
+        :param last_epoch:
+        :param verbose:
+        """
+        self.optimizer = optimizer
+        self.warmup_steps = warmup_steps
+        self.model_size = model_size
+        self.factor = factor
+
+        super().__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        # 避免0的负幂次
+        if self.last_epoch == 0:
+            self.last_epoch = 1
+
+        step = self.last_epoch
+        lr = self.factor * (self.model_size ** (-0.5) * min(step ** (-0.5), step * self.warmup_steps ** (-1.5)))
+        return [lr] * len(self.optimizer.param_groups)
