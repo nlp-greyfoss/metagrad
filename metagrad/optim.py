@@ -313,7 +313,95 @@ class LambdaLR(LRScheduler):
 
 
 class CosineAnnealingLR(LRScheduler):
-    pass
+    def __init__(self, optimizer, T_max, eta_min=0, last_epoch=-1, verbose=False):
+        """
+        由SGDR提出，但这里仅实现余弦退火部分，并不包含热重启部分。
+        Args:
+            optimizer:
+            T_max: 最多迭代次数
+            eta_min: 最小学习率
+            last_epoch:
+            verbose:
+        """
+        self.T_max = T_max
+        self.eta_min = eta_min
+        super().__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        if self.last_epoch == 0:
+            # 刚开始时，学习率最大，为默认的学习率
+            return [group['lr'] for group in self.optimizer.param_groups]
+
+        return [self.eta_min + (base_lr - self.eta_min) * (1 + math.cos(self.last_epoch * math.pi / self.T_max)) / 2 for
+                base_lr in self.base_lrs]
+
+
+class CosineAnnealingWarmRestarts(LRScheduler):
+    def __init__(self, optimizer, T_0, T_mult=1, eta_min=0, last_epoch=-1, verbose=False):
+        """
+        使用余弦退火衰减调整每个参数组的学习率，并在T_i次epoch后进行热重启，重启为初始学习率。
+        T_i是两次热重启之间的间隔epoch次数。
+        Args:
+            optimizer:
+            T_0: 第一次重启的epoch次数
+            T_mult: 重启周期增大因子， ≥ 1
+            eta_min: 最小学习率
+            last_epoch:
+            verbose:
+        """
+        self.T_0 = T_0
+        self.T_i = T_0  # 初始T_i 为 T_0 ，后面可能会增大
+        self.T_mult = T_mult
+        self.eta_min = eta_min
+        self.T_cur = last_epoch  # 当前间隔内的epoch次数
+        super().__init__(optimizer, last_epoch, verbose)
+
+    def get_lr(self):
+        return [self.eta_min + (base_lr - self.eta_min) * (1 + math.cos(self.T_cur * math.pi / self.T_i)) / 2 for
+                base_lr in self.base_lrs]
+
+    def step(self, epoch=None):
+        """这里需要重写step，在里面更新T_i和T_cur"""
+        if epoch is None and self.last_epoch < 0:
+            epoch = 0
+
+        if epoch is None:
+            epoch = self.last_epoch + 1
+            self.T_cur = self.T_cur + 1
+            if self.T_cur > self.T_i:
+                self.T_cur = self.T_cur - self.T_i
+                self.T_i = self.T_i * self.T_mult  # 重启次数乘以增大因子
+        else:
+            if epoch < 0:
+                raise ValueError(f"Expected non-negative epoch, but got {epoch}")
+            if epoch >= self.T_0:
+                # 如果增大因子为1，即不增大
+                if self.T_mult == 1:
+                    self.T_cur = epoch % self.T_0
+                else:
+                    # 计算当前是第几次周期内，T_i为当期周期的大小
+                    # 假设T_0=8;T_mul=2;
+                    # 那么0-7属于第一次周期，该周期大小为8，epoch=0属于第一次周期的开始(更新T_cur=0)；
+                    # 那么8-23属于第二次周期，该周期大小为16，epoch=24属于第二次周期的开始(更新T_cur=0)；
+                    # T_cur是当期周期内的epoch数
+                    n = int(math.log((epoch / self.T_0 * (self.T_mult - 1) + 1), self.T_mult))
+                    # 更新当前周期内的epoch数
+                    self.T_cur = epoch - self.T_0 * (self.T_mult ** n - 1) / (self.T_mult - 1)
+                    # 计算周期大小
+                    self.T_i = self.T_0 * self.T_mult ** n
+            else:
+                # 如果还在第一个周期内
+                self.T_i = self.T_0
+                self.T_cur = epoch
+
+        self.last_epoch = math.floor(epoch)
+
+        for i, data in enumerate(zip(self.optimizer.param_groups, self.get_lr())):
+            param_group, lr = data
+            param_group["lr"] = lr
+            self.print_lr(self.verbose, lr, epoch)
+
+        self._last_lr = [group['lr'] for group in self.optimizer.param_groups]
 
 
 class NoamLR(LRScheduler):
@@ -343,3 +431,135 @@ class NoamLR(LRScheduler):
         step = self.last_epoch
         lr = self.factor * (self.model_size ** (-0.5) * min(step ** (-0.5), step * self.warmup_steps ** (-1.5)))
         return [lr] * len(self.optimizer.param_groups)
+
+
+class ReduceLROnPlateau:
+    def __int__(self, optimizer, mode="min", factor=0.1, patience=10, threshold=1e-4, threshold_mode="rel", cooldown=0,
+                min_lr=0, eps=1e-8, verbose=False):
+        """
+        当某个指标在一定返回的epoch内(patience)停止提升时才进行学习率衰减，避免偶发的指标为提升导致的学习率衰减
+        Args:
+            optimizer:
+            mode: min|max，指标是越小越好，还是越大越好
+            factor: 衰减的乘法因子 < 1
+            patience: 能容忍多少次指标不提升
+            threshold: 至少提升了threshold才认为是真的提升，默认为1e-4
+            threshold_mode: rel|abs。在rel模式下，max方式下dynamic_threshold = best * ( 1 + threshold )，
+                                                min方式下，dynamic_threshold = best * ( 1 - threshold )；
+                                     在abs模式下，max方式下dynamic_threshold = best + threshold，
+                                                min方式下dynamic_threshold = best - threshold。
+
+            cooldown: 进行一次学习率衰减后，多少个epoch内不继续衰减
+            min_lr: 学习率的最小下限
+            eps: 学习率的最小衰减值，如果衰减前后学习率的差值小于eps，那么就不进行更新
+            verbose:
+
+        Returns:
+
+        """
+
+        if factor >= 1.0:
+            raise ValueError('Factor should be < 1.0.')
+        self.factor = factor
+
+        self.optimizer = optimizer
+        if isinstance(min_lr, (list, tuple)):
+            if len(min_lr) != len(optimizer.param_groups):
+                raise ValueError(f"expected {len(optimizer.param_groups)} min_lrs, got {len(min_lr)}")
+            self.min_lrs = list(min_lr)
+        else:
+            self.min_lrs = [min_lr] * len(optimizer.param_groups)
+
+        self.patience = patience
+        self.verbose = verbose
+        self.cooldown = cooldown
+        self.cooldown_counter = 0
+        self.mode = mode
+        self.threshold = threshold
+        self.threshold_mode = threshold_mode
+        self.best = None
+        self.num_bad_epochs = None
+        self.mode_worse = None  # 选定mode的更差的值
+        self.eps = eps
+        self.last_epoch = 0
+        self._init_is_better(mode=mode, threshold=threshold, threshold_mode=threshold_mode)
+        self._reset()
+
+    def _reset(self):
+        self.best = self.mode_worse
+        self.cooldown_counter = 0
+        self.num_bad_epochs = 0
+
+    def step(self, metrics, epoch=None):
+        current = float(metrics)
+        if epoch is None:
+            epoch = self.last_epoch + 1
+
+        self.last_epoch = epoch
+
+        # 如果当期指标比最佳的好
+        if self.is_better(current, self.best):
+            self.best = current
+            self.num_bad_epochs = 0
+        else:
+            self.num_bad_epochs += 1
+
+        # 在cooldown_counter > 0时不会进行衰减
+        if self.in_cooldown:
+            self.cooldown_counter -= 1
+            self.num_bad_epochs = 0  # 在cooldown期间内num_bad_epoch一直为0
+
+        if self.num_bad_epochs > self.patience:
+            # 如果差的epoch次数大于容忍的次数，则进行学习率衰减
+            self._reduce_lr(epoch)
+            self.cooldown_counter = self.cooldown  # 进入cooldown期间
+            self.num_bad_epochs = 0  # 重置为0
+
+        self._last_lr = [group["lr"] for group in self.optimizer.param_groups]
+
+    def _reduce_lr(self, epoch):
+        for i, param_group in enumerate(self.optimizer.param_groups):
+            old_lr = float(param_group["lr"])
+            # 设定新的学习率，但不能小于预设的最小学习率
+            new_lr = max(old_lr * self.factor, self.min_lrs[i])
+            # 如果new_lr确实减少了
+            if old_lr - new_lr > self.eps:
+                param_group["lr"] = new_lr
+                if self.verbose:
+                    epoch_str = (f"{epoch:.2f}" if isinstance(epoch, float) else f"{epoch:.5d}")
+                    print(f"Epoch {epoch_str}: reducing learning rate  of group {i} to {new_lr:.4e}.")
+
+    @property
+    def in_cooldown(self):
+        return self.cooldown_counter > 0
+
+    def is_better(self, a, best):
+        """ 判断a是否比best要好"""
+        if self.mode == "min" and self.threshold_mode == "rel":
+            rel_epsilon = 1 - self.threshold
+            return a < best * rel_epsilon
+
+        elif self.mode == "min" and self.threshold_mode == "abs":
+            return a < best - self.threshold
+
+        elif self.mode == "max" and self.threshold_mode == "rel":
+            rel_epsilon = self.threshold + 1.
+            return a > best * rel_epsilon
+
+        else:  # mode == "max" and epsilon_mode == "abs":
+            return a > best + self.threshold
+
+    def _init_is_better(self, mode, threshold, threshold_mode):
+        if mode not in {'min', 'max'}:
+            raise ValueError('mode ' + mode + ' is unknown!')
+        if threshold_mode not in {'rel', 'abs'}:
+            raise ValueError('threshold mode ' + threshold_mode + ' is unknown!')
+
+        if mode == 'min':
+            self.mode_worse = float('inf')
+        else:  # mode == 'max':
+            self.mode_worse = -float('inf')
+
+        self.mode = mode
+        self.threshold = threshold
+        self.threshold_mode = threshold_mode
