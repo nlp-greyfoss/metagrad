@@ -43,7 +43,7 @@ def load_data(path, draw_picture=False):
 
     y = y[:, np.newaxis]
 
-    return Tensor(X), Tensor(y)
+    return Tensor(X.to_numpy()), Tensor(y)
 
 
 if __name__ == '__main__':

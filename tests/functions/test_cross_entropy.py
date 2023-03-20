@@ -11,12 +11,13 @@ def test_binary_cross_entropy():
     y = np.random.randint(0, 1, (N,))
 
     mx = Tensor(x, requires_grad=True)
+    my = Tensor(y)
 
     tx = torch.tensor(x, dtype=torch.float32, requires_grad=True)
     ty = torch.tensor(y, dtype=torch.float32)
 
     mo = torch.binary_cross_entropy_with_logits(tx, ty).mean()
-    to = F.binary_cross_entropy(mx, y)
+    to = F.binary_cross_entropy(mx, my)
 
     assert np.allclose(mo.data,
                        to.array())
@@ -24,8 +25,8 @@ def test_binary_cross_entropy():
     mo.backward()
     to.backward()
 
-    assert np.allclose(mx.grad.data,
-                       tx.grad.data)
+    assert np.allclose(mx.grad,
+                       tx.grad)
 
 
 def test_cross_entropy():
@@ -45,7 +46,7 @@ def test_cross_entropy():
     mo.backward()
     to.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_cross_entropy_class_indices():
@@ -65,7 +66,7 @@ def test_cross_entropy_class_indices():
     mo.backward()
     to.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_random():
@@ -87,4 +88,4 @@ def test_random():
     mo.backward()
     to.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)

@@ -13,7 +13,7 @@ def test_simple_log():
 
     z.backward()
 
-    np.testing.assert_array_almost_equal(x.grad.data.tolist(), 0.1)
+    np.testing.assert_array_almost_equal(x.grad.tolist(), 0.1)
 
 
 def test_array_log():
@@ -22,6 +22,6 @@ def test_array_log():
 
     np.testing.assert_array_almost_equal(z.data, np.log([1, 2, 3]))
 
-    z.backward([1, 1, 1])
+    z.backward(np.array([1, 1, 1]))
 
-    np.testing.assert_array_almost_equal(x.grad.data.tolist(), [1, 0.5, 1 / 3])
+    np.testing.assert_array_almost_equal(x.grad.tolist(), [1, 0.5, 1 / 3])

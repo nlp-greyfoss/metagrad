@@ -17,13 +17,13 @@ def test_simple_repeat():
 
     mz.sum().backward()
 
-    assert np.allclose(mx.grad.data,
-                       tx.grad.data)
+    assert np.allclose(mx.grad,
+                       tx.grad)
 
 
 def test_repeat():
     mx = Tensor([1., 2., 3.], requires_grad=True)
-    mz = mx.repeat((4, 2))
+    mz = mx.repeat(4, 2)
 
     tx = torch.tensor([1., 2., 3.], requires_grad=True)
     tz = tx.repeat(4, 2)
@@ -34,5 +34,5 @@ def test_repeat():
 
     mz.sum().backward()
 
-    assert np.allclose(mx.grad.data,
-                       tx.grad.data)
+    assert np.allclose(mx.grad,
+                       tx.grad)

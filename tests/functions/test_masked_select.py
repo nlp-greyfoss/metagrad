@@ -5,19 +5,23 @@ import metagrad.functions as F
 from metagrad.tensor import Tensor
 
 
-def test_simple_cat():
-    x = np.random.randn(2, 3)
+def test_masked_select():
+    x = np.random.randn(3, 4)
+    print(x)
 
     mx = Tensor(x, requires_grad=True)
-
     tx = torch.tensor(x, requires_grad=True)
+    mask = x > 0.5
 
-    my = F.cat((mx, mx, mx), 0)
-    ty = torch.cat((tx, tx, tx), 0)
+    print(mask)
+
+    my = F.masked_select(mx, mask)
+    ty = torch.masked_select(tx, torch.tensor(mask))
 
     assert np.array_equal(my.data, ty.data)
 
-    my.sum().backward()
     ty.sum().backward()
+
+    my.sum().backward()
 
     assert np.allclose(mx.grad, tx.grad)

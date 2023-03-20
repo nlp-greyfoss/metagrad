@@ -55,6 +55,7 @@ gpu_available = True
 
 try:
     import cupy
+    import cupyx
     from cupy import cuda
     from cupy import ndarray
     from cupy.cuda import Device as CudaDevice
@@ -291,8 +292,19 @@ def clear_memo():
 @memoize()
 def elementwise(in_params, out_params, operation, name, **kwargs):
     '''
-    调用cupy的ElementwiseKernel去加速GPU运行，注意需要编写C++代码，见 https://docs.cupy.dev/en/stable/user_guide/kernel.html
+        调用cupy的ElementwiseKernel去加速GPU运行，注意需要编写C++代码，见 https://docs.cupy.dev/en/stable/user_guide/kernel.html
+
+    Args:
+        in_params: 输入参数
+        out_params: 输出参数
+        operation: 操作
+        name: 名称
+        **kwargs:
+
+    Returns:
+
     '''
+
     check_cuda_available()
     return cupy.ElementwiseKernel(
         in_params, out_params, operation, name, **kwargs)

@@ -25,4 +25,4 @@ def test_ce_loss():
     ml.backward()
     tl.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)

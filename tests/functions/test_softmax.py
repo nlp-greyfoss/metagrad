@@ -20,7 +20,7 @@ def test_simple_softmax():
     y.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data, rtol=1e-05, atol=1e-05)
+    assert np.allclose(mx.grad, tx.grad, rtol=1e-05, atol=1e-05)
 
 
 def test_softmax():
@@ -37,4 +37,4 @@ def test_softmax():
     y.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data, rtol=1e-05, atol=1e-05)
+    assert np.allclose(mx.grad, tx.grad, rtol=1e-05, atol=1e-05)

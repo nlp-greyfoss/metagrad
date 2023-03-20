@@ -44,12 +44,11 @@ N-Gram语言模型 --> 加速CuPy运算
 神经概率语言模型 --> RNN
 神经概率语言模型 --> LSTM
 神经概率语言模型 --> GRU
- LSTM --> ELMO
-ELMO --> Seq2Seq 
-ELMO --> 带注意力机制的Seq2seq
-ELMO --> 注意力机制
-带注意力机制的Seq2seq -- 实战 --> chatbot[基于Seq2seq with Attention 实现聊天机器人] --> CNN
-CNN --> TextCNN --> Transformer  --> BERT 
+LSTM --> Seq2Seq 
+LSTM --> 带注意力机制的Seq2seq
+LSTM --> 注意力机制
+带注意力机制的Seq2seq  --> CNN 
+CNN --> TextCNN -->  ELMO --> Transformer  --> BERT 
 
 click Graph "https://helloai.blog.csdn.net/article/details/121964022"
 click Operator "https://helloai.blog.csdn.net/article/details/122024945"

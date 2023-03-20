@@ -115,16 +115,19 @@ class NMTDataset(Dataset):
         return src, tgt
 
 
-def load_dataset_nmt(data_path, batch_size=32, min_freq=1, max_len=20):
+def load_dataset_nmt(data_path, batch_size=32, min_freq=1, max_len=20, src_vocab=None, tgt_vocab=None, shuffle=True):
     # 读取原始文本
-    raw_text = read_nmt(data_path)
+    raw_text = cht_to_chs(read_nmt(data_path))
     # 处理英文符号
     text = process_nmt(raw_text)
     # 中英文分词
     source, target = tokenize_nmt(text)
     # 构建源和目标词表
-    src_vocab = Vocabulary.build(source, min_freq=min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
-    tgt_vocab = Vocabulary.build(target, min_freq=min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
+    if src_vocab is None:
+        src_vocab = Vocabulary.build(source, min_freq=min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
+    if tgt_vocab is None:
+        tgt_vocab = Vocabulary.build(target, min_freq=min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
+
     print(f'Source vocabulary size: {len(src_vocab)}, Target vocabulary size: {len(tgt_vocab)}')
     # 转换成批数据
     src_array = build_array_nmt(source, src_vocab, max_len)
@@ -132,10 +135,9 @@ def load_dataset_nmt(data_path, batch_size=32, min_freq=1, max_len=20):
     # 构建数据集
     dataset = NMTDataset([(src, tgt) for src, tgt in zip(src_array, tgt_array)])
     # 数据加载器
-    data_loader = DataLoader(dataset, batch_size=batch_size, collate_fn=dataset.collate_fn, shuffle=True)
+    data_loader = DataLoader(dataset, batch_size=batch_size, collate_fn=dataset.collate_fn, shuffle=shuffle)
     # 返回加载器和两个词表
     return data_loader, src_vocab, tgt_vocab
-
 
 #
 # train_dataset, src_vocab, tgt_vocab = load_dataset_nmt('../data/en-cn/train_mini.txt')

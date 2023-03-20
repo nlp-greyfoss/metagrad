@@ -10,7 +10,7 @@ def test_transpose():
     assert z.data.shape == (3, 2)
     z.backward(np.ones((3, 2)))
 
-    assert x.grad.data.tolist() == np.ones_like(x.data).tolist()
+    assert x.grad.tolist() == np.ones_like(x.data).tolist()
 
 
 def test_matrix_transpose():
@@ -21,4 +21,4 @@ def test_matrix_transpose():
 
     z.backward(np.ones((2, 1, 6)))
 
-    assert x.grad.data.tolist() == np.ones_like(x.data).tolist()
+    assert x.grad.tolist() == np.ones_like(x.data).tolist()

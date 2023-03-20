@@ -30,7 +30,7 @@ def test_simple_chunk():
     (my0 + my1).sum().backward()
     (ty0 + ty1).sum().backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_chunk():
@@ -52,6 +52,6 @@ def test_chunk():
     (my[0]).sum().backward()
     (ty[0]).sum().backward()
 
-    print(mx.grad.data)
+    print(mx.grad)
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)

@@ -16,8 +16,8 @@ def test_simple_matmul():
     grad = Tensor(np.ones_like(z.data))
     z.backward(grad)
 
-    np.testing.assert_array_equal(x.grad.data, grad.data @ y.data.T)
-    np.testing.assert_array_equal(y.grad.data, x.data.T @ grad.data)
+    np.testing.assert_array_equal(x.grad, grad @ y.data.T)
+    np.testing.assert_array_equal(y.grad, x.data.T @ grad)
 
 
 def test_broadcast_matmul():
@@ -35,9 +35,9 @@ def test_broadcast_matmul():
     assert z.data.tolist() == tz.data.tolist()
 
     grad = np.ones_like(z.data)
-    z.backward(Tensor(grad))
+    z.backward(grad)
     tz.backward(tensor(grad))
 
     # 和老大哥 pytorch保持一致就行了
-    assert np.allclose(x.grad.data, tx.grad.data)
-    assert np.allclose(y.grad.data, ty.grad.data)
+    assert np.allclose(x.grad, tx.grad)
+    assert np.allclose(y.grad, ty.grad)

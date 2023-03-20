@@ -23,4 +23,4 @@ def test_simple_stack():
     my.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(mx1.grad.data, tx1.grad.data)
+    assert np.allclose(mx1.grad, tx1.grad)

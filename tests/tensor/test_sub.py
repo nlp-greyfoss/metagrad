@@ -3,13 +3,29 @@ import numpy as np
 from metagrad.tensor import Tensor
 
 
+def test_right_sub_constant():
+    x = Tensor(1, requires_grad=True)
+    z = x - 2
+    assert z.item() == -1
+    z.backward()
+    assert x.grad == 1.0
+
+
+def test_left_sub_constant():
+    x = Tensor(1, requires_grad=True)
+    z = 2 - x
+    assert z.item() == 1
+    z.backward()
+    assert x.grad == -1.0
+
+
 def test_simple_sub():
     x = Tensor(1, requires_grad=True)
     y = Tensor(2, requires_grad=True)
     z = x - y
     z.backward()
-    assert x.grad.data == 1.0
-    assert y.grad.data == -1.0
+    assert x.grad == 1.0
+    assert y.grad == -1.0
 
 
 def test_array_sub():
@@ -19,14 +35,13 @@ def test_array_sub():
     z = x - y
     assert z.data.tolist() == [-3., -3., -3.]
 
-    z.backward(Tensor([1, 1, 1]))
+    z.backward(np.array([1, 1, 1]))
 
-    assert x.grad.data.tolist() == [1, 1, 1]
-    assert y.grad.data.tolist() == [-1, -1, -1]
+    assert x.grad.tolist() == [1, 1, 1]
+    assert y.grad.tolist() == [-1, -1, -1]
 
-    x -= 0.1
-    assert x.grad is None
-    np.testing.assert_array_almost_equal(x.data, [0.9, 1.9, 2.9])
+    x -= 1
+    np.testing.assert_array_almost_equal(x.data, [0, 1, 2])
 
 
 def test_broadcast_sub():
@@ -36,7 +51,7 @@ def test_broadcast_sub():
     z = x - y  # shape (2, 3)
     assert z.data.tolist() == [[-6, -6, -6], [-3, -3, -3]]
 
-    z.backward(Tensor(np.ones_like(x.data)))
+    z.backward(np.ones_like(x.data))
 
-    assert x.grad.data.tolist() == [[1, 1, 1], [1, 1, 1]]
-    assert y.grad.data.tolist() == [-2, -2, -2]
+    assert x.grad.tolist() == [[1, 1, 1], [1, 1, 1]]
+    assert y.grad.tolist() == [-2, -2, -2]

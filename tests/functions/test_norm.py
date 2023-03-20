@@ -20,7 +20,7 @@ def test_simple_norm_1():
     y.backward()
     ty.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_simple_norm_2():
@@ -38,7 +38,7 @@ def test_simple_norm_2():
     y.backward()
     ty.backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_norm_1():
@@ -55,7 +55,7 @@ def test_norm_1():
     y.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_norm_2():
@@ -72,4 +72,4 @@ def test_norm_2():
     y.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)

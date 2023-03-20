@@ -6,6 +6,7 @@ import metagrad.functions as F
 from metagrad.tensor import Tensor
 
 
+
 def test_weight_decay():
     weight_decay = 0.5
     X = Tensor(np.random.rand(5, 2))
@@ -35,4 +36,7 @@ def test_weight_decay():
 
     optimizer.step()
     weight_1 = model.weight.data.copy()
+    print(weight_0.data)
+    print(weight_1.data)
+
     assert np.allclose(weight_0.data, weight_1.data)

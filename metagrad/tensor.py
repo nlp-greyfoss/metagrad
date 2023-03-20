@@ -20,7 +20,7 @@ from metagrad.cuda import (
     get_array_module
 )
 
-_type = np.float32
+float_type = np.float32
 
 # 设置显示精度
 np.set_printoptions(precision=4)
@@ -154,7 +154,7 @@ class Tensor:
 
         self.requires_grad = requires_grad
         # 保存该Tensor的梯度
-        self._grad = None
+        self._grad = None  # 改成NdArray类型
 
         if self.requires_grad:
             self.zero_grad()
@@ -169,7 +169,7 @@ class Tensor:
 
     @data.setter
     def data(self, new_data: NdArray) -> None:
-        self._data = ensure_array(new_data, self.device)
+        self._data = ensure_array(new_data, device=self.device)
         # 重新赋值后就没有梯度了
         self._grad = None
 
@@ -210,7 +210,7 @@ class Tensor:
         self._device = device
 
         if self._grad is not None:
-            self._grad = Tensor(device.transfer(self._grad.data), device=device)
+            self._grad = Tensor(device.transfer(self._grad), device=device)
 
         return self
 
@@ -229,8 +229,7 @@ class Tensor:
         Returns:
 
         '''
-        xp = self.xp
-        self._grad = Tensor(xp.zeros_like(self.data))
+        self._grad = self.xp.zeros_like(self.data)
 
     def __repr__(self) -> str:
         return f"Tensor({self.data}, requires_grad={self.requires_grad}" \
@@ -268,6 +267,9 @@ class Tensor:
         """转换为Numpy或Cupy数组"""
         return self.data
 
+    def tolist(self):
+        return self.data.tolist()
+
     def item(self) -> Number:
         '''将只有一个元素的Tensor转换为Python标量'''
         return self.array().item()
@@ -284,17 +286,20 @@ class Tensor:
         return self
 
     def float_(self) -> "Tensor":
-        self.data = self.data.astype(np.float32)
+        self.data = self.data.astype(float_type)
         return self
+
+    def is_floating_point(self):
+        return isinstance(self.data, np.floating)
 
     def uniform_(self, low: float = 0.0, high: float = 1.0) -> "Tensor":
         xp = self.device.xp
-        self.data = xp.random.uniform(low, high, size=self.shape)
+        self.data = xp.random.uniform(low, high, size=self.shape).astype(float_type)
         return self
 
     def normal_(self, mean: float = 0.0, std: float = 1.0) -> "Tensor":
         xp = self.device.xp
-        self.data = xp.random.normal(mean, std, size=self.shape)
+        self.data = xp.random.normal(mean, std, size=self.shape).astype(float_type)
         return self
 
     def index_fill_(self, dim: int, index: "Tensor", value: float) -> "Tensor":
@@ -310,13 +315,13 @@ class Tensor:
 
     # ****创造帮助函数****
     @classmethod
-    def empty(cls, *shape, dtype=_type, device=None, **kwargs):
+    def empty(cls, *shape, dtype=float_type, device=None, **kwargs):
         device = get_device(device)
         xp = device.xp
         return cls(xp.empty(*shape, dtype=dtype), device=device, **kwargs)
 
     @classmethod
-    def zeros(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
+    def zeros(cls, *shape, dtype=float_type, device=None, **kwargs) -> "Tensor":
         device = get_device(device)
         xp = device.xp
         return cls(xp.zeros(*shape, dtype=dtype), device=device, **kwargs)
@@ -326,7 +331,7 @@ class Tensor:
         return cls(t.xp.zeros(t.shape, dtype=t.dtype), device=t.device, **kwargs)
 
     @classmethod
-    def ones(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
+    def ones(cls, *shape, dtype=float_type, device=None, **kwargs) -> "Tensor":
         device = get_device(device)
         xp = device.xp
         return cls(xp.ones(shape=shape, dtype=dtype), device=device, **kwargs)
@@ -336,26 +341,26 @@ class Tensor:
         return cls(t.xp.ones(shape=t.shape, dtype=t.dtype), device=t.device, **kwargs)
 
     @classmethod
-    def randn(cls, *shape, dtype=_type, device=None, **kwargs) -> "Tensor":
+    def randn(cls, *shape, dtype=float_type, device=None, **kwargs) -> "Tensor":
         device = get_device(device)
         xp = device.xp
         return cls(xp.random.randn(*shape).astype(dtype), device=device, **kwargs)
 
     @classmethod
-    def arange(cls, stop, start=0, step=1, dtype=None, device=None, **kwargs) -> "Tensor":
+    def arange(cls, stop, start=0, step=1, dtype=float_type, device=None, **kwargs) -> "Tensor":
         device = get_device(device)
         xp = device.xp
-        return cls(xp.arange(start=start, stop=stop, step=step).astype(dtype), device=device, **kwargs)
+        return cls(xp.arange(stop, start, step).astype(dtype), device=device, **kwargs)
 
     @classmethod
-    def eye(cls, dim, dtype=_type, device=None, **kwargs) -> "Tensor":
+    def eye(cls, dim, dtype=float_type, device=None, **kwargs) -> "Tensor":
         device = get_device(device)
         xp = device.xp
         return cls(xp.eye(dim).astype(dtype), device=device, **kwargs)
 
     @classmethod
     def uniform(cls, *shape, low: float = -1.0, high: float = 1.0,
-                dtype=_type, device=None, **kwargs) -> "Tensor":
+                dtype=float_type, device=None, **kwargs) -> "Tensor":
         device = get_device(device)
         xp = device.xp
         return cls((xp.random.uniform(low, high, size=shape)).astype(dtype), device=device, **kwargs)
@@ -408,27 +413,41 @@ class Tensor:
     def T(self) -> "Tensor":
         return self.transpose(axes=None)
 
-    def _get_ops(self, name):
+    def _get_ops(self, name, *args, **kwargs):
         # 调用动态绑定的方法
-        return self.__getattribute__(name)
+        return self.__getattribute__(name, *args, **kwargs)
 
-    def view(self, *shape):
+    def repeat(self, *sizes):
+        if len(sizes) == 1:
+            sizes = sizes[0]
 
-        if isinstance(shape[0], tuple):
+        return self._get_ops('_repeat')(sizes)
+
+    def reshape(self, *shape):
+        if len(shape) == 1:
             shape = shape[0]
 
-        return self._get_ops('reshape')(shape)
+        return self._get_ops('_reshape')(shape)
+
+    def view(self, *shape):
+        return self.reshape(shape)
 
     def expand_dims(self, axis: int):
         return self._get_ops('expanddims')(axis)
 
-    def backward(self, grad: "Tensor" = None, retain_grad=False, create_graph=False) -> None:
+    def __array__(self):
+        return self.to_cpu().array()
+
+    def detach(self):
+        return Tensor(self)
+
+    def backward(self, grad: NdArray = None, retain_grad=False, create_graph=False) -> None:
         '''
         实现Tensor的反向传播
         Args:
-            grad: 如果该Tensor不是标量，则需要传递梯度进来
+            grad: 如果不是标量，则需要传递梯度进来
             retain_grad: 是否保留梯度的中间变量
-            create_graph: 是否整个计算梯度的过程也需要保留到计算图中，即double_backprop
+            create_graph: 是否整个计算梯度的过程也需要保留到计算图中，即double_backprop: todo 待实现
 
         Returns:
 
@@ -443,12 +462,13 @@ class Tensor:
         if grad is None:
             if self.shape == ():
                 # 设置梯度值为1，grad本身不需要计算梯度
-                self._grad = Tensor(1., device=self.device)
+                self._grad = self.xp.ones_like(self.data)
+
             else:
                 # 如果当前Tensor得到不是标量，那么grad必须指定
                 raise RuntimeError("grad must be specified for non scalar")
         else:
-            self._grad = ensure_tensor(grad, device=self.device)
+            self._grad = grad
 
         funcs = []  # 候选函数堆
         seen_set = set()
@@ -463,23 +483,20 @@ class Tensor:
         while funcs:
             _, _, f = heapq.heappop(funcs)
             # 获取输出对应的梯度，解决多个输出梯度不一致的问题
-            gys = [output().grad.data for output in f.outputs]  # output 是 weakref
+            gys = [output().grad for output in f.outputs]  # output 是 weakref
 
             with using_config('backprop', create_graph):
                 with OpWrapper(f.__class__.__name__, gys, backward=True):
                     gxs = f.backward(*gys)
                 if not isinstance(gxs, tuple):
                     gxs = (gxs,)
-
                 for x, gx in zip(f.inputs, gxs):
                     if x.requires_grad and gx is not None:
                         assert x.shape == gx.shape, f"grad shape must match tensor shape in {f!r}, {gx.shape!r} != {x.shape!r}"
-
-                        gx = Tensor(gx, device=self.device, dtype=self.dtype)
                         if x.grad is None:
                             x._grad = gx
                         else:
-                            x._grad = x.grad + gx
+                            x._grad = x._grad + gx  # grad本身不需要计算梯度，所以普通NdArray即可
 
                         if x.creator is not None:
                             add_func(x.creator)
@@ -501,20 +518,22 @@ class Tensor:
 
 def register(name, fxn):
     def dispatch(*xs, **kwargs):
-
-        device = [x for x in xs if isinstance(x, Tensor)][0].device
-
-        xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
-
+        # device = [x for x in xs if isinstance(x, Tensor)][0].device
+        # xs = [ensure_tensor(x, device) if not isinstance(x, Tensor) else x for x in xs]
+        # xs = [x.data if isinstance(x, Tensor) else x for x in xs]
         return fxn()(*xs, **kwargs)
 
     if name in ["pow", "neg", "abs"]:
         setattr(Tensor, f"__{name}__", dispatch)
-    # 为Tensor添加属性，名为name，值为dispatch函数引用
-    setattr(Tensor, name, dispatch)
+
+    if getattr(Tensor, name, None) is None:
+        # 为Tensor添加属性，名为name，值为dispatch函数引用
+        setattr(Tensor, name, dispatch)
+    else:
+        setattr(Tensor, f'_{name}', dispatch)
 
     # 这几个方法都有__xx__, __ixx__, __rxx__ 魔法方法
-    if name in ["add", "sub", "mul", "truediv", "matmul"]:
+    if name in ["matmul"]:
         setattr(Tensor, f"__{name}__", dispatch)
         setattr(
             Tensor, f"__i{name}__", lambda self, x: self.assign(dispatch(self, x))

@@ -18,7 +18,7 @@ def test_simple_unsqueeze():
     my.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)
 
 
 def test_unsqueeze():
@@ -35,4 +35,4 @@ def test_unsqueeze():
     my.sum().backward()
     ty.sum().backward()
 
-    assert np.allclose(mx.grad.data, tx.grad.data)
+    assert np.allclose(mx.grad, tx.grad)

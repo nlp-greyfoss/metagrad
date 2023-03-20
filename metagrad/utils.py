@@ -1,5 +1,6 @@
 import os
 import time
+from collections import namedtuple
 from datetime import datetime
 from typing import List
 
@@ -8,6 +9,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import metagrad.module as nn
+from metagrad.cuda import get_array_module
 from metagrad.dataloader import DataLoader
 from metagrad.optim import Optimizer
 from metagrad.tensor import Tensor
@@ -110,7 +112,7 @@ def make_batches(X, y, batch_size=32, shuffle=True):
     return X_batches, y_batches
 
 
-def loss_batch(model: nn.Module, loss_func, X_batch, y_batch, opt: Optimizer = None):
+def loss_batch(model, loss_func, X_batch, y_batch, opt: Optimizer = None):
     '''
     对批数据计算损失
     :param model: 模型
@@ -264,7 +266,7 @@ class Timer:
         return np.array(self.times).cumsum().tolist()
 
 
-def run_epoch(model: nn.Module, data_loader: DataLoader, loss: nn.Module, opt: Optimizer = None,
+def run_epoch(model, data_loader: DataLoader, loss, opt: Optimizer = None,
               activate_func=lambda x: x, evaluate_func=accuracy):
     '''
     进行一次迭代
@@ -325,26 +327,40 @@ def unpad_sequence(padded_sequences, lengths):
     return unpadded_sequences
 
 
-# def clip_grad_norm_(parameters, max_norm: float, norm_type: float = 2.0):
-#     if isinstance(parameters, Tensor):
-#         parameters = [parameters]
-#
-#     grads = [p.grad for p in parameters if p.grad is not None]
-#     max_norm = float(max_norm)
-#     norm_type = float(norm_type)
-#     if len(grads) == 0:
-#         return Tensor(0.)
-#
-#     device = grads[0].device
-#
-#     if norm_type == float('inf'):
-#         norms = [g.abs().max().to(device) for g in grads]
-#         total_norm = norms[0] if len(norms) == 1 else F.stack(norms).max()
-#     else:
-#         total_norm = F.norm(F.stack([F.norm(g, norm_type).to(device) for g in grads]), norm_type)
-#
-#     clip_coef = max_norm / (total_norm + 1e-6)
-#     clip_coef_clamped = F.clamp(clip_coef, max=1.0)
-#     for g in grads:
-#         g.mul_(clip_coef_clamped.to(g.device))
-#     return total_norm
+def ngrams_iterator(token_list, ngrams):
+    def _get_ngrams(n):
+        return zip(*[token_list[i:] for i in range(n)])
+
+    # 1-gram
+    for x in token_list:
+        yield x
+    # n-gram
+    for n in range(2, ngrams + 1):
+        for x in _get_ngrams(n):
+            yield " ".join(x)
+
+
+def clip_grad_norm_(parameters, max_norm: float, norm_type: float = 2.0):
+    if isinstance(parameters, Tensor):
+        parameters = [parameters]
+
+    grads = [p.grad for p in parameters if p.grad is not None]
+    max_norm = float(max_norm)
+    norm_type = float(norm_type)
+
+    xp = get_array_module(grads[0])
+
+    if norm_type == float('inf'):
+        norms = [xp.max(xp.abs(g)) for g in grads]
+        total_norm = norms[0] if len(norms) == 1 else xp.max(xp.concatenate(norms))
+    else:
+        norm = xp.linalg.norm  # norm(g, norm_type)
+        total_norm = norm(xp.stack([norm(g, norm_type) for g in grads]), norm_type)
+
+    clip_coef = max_norm / (total_norm + 1e-6)
+    clip_coef_clamped = xp.clip(clip_coef, a_max=1.0)
+
+    for p in parameters:
+        p.grad *= clip_coef_clamped
+
+    return total_norm

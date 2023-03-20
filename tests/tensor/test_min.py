@@ -10,7 +10,7 @@ def test_simple_min():
     assert z.data == [1]
     z.backward()
 
-    assert x.grad.data.tolist() == [1, 0, 0, 0, 0, 0, 0]
+    assert x.grad.tolist() == [1, 0, 0, 0, 0, 0, 0]
 
 
 def test_simple_min2():
@@ -21,7 +21,7 @@ def test_simple_min2():
     z.backward()
 
     # 但是有两个最小值，所以梯度被均分了
-    assert x.grad.data.tolist() == [0.5, 0, 0, 0, 0, 0, 0.5]
+    assert x.grad.tolist() == [0.5, 0, 0, 0, 0, 0, 0.5]
 
 
 def test_matrix_min():
@@ -37,7 +37,7 @@ def test_matrix_min():
     z.backward()
 
     # 总共有4个1
-    np.testing.assert_array_almost_equal(x.grad.data, [[1 / 4, 1 / 4, 0, 0, 1 / 4],
+    np.testing.assert_array_almost_equal(x.grad, [[1 / 4, 1 / 4, 0, 0, 1 / 4],
                                                        [0, 0, 0, 0, 0],
                                                        [0, 0, 0, 0, 0],
                                                        [0, 0, 1 / 4, 0, 0]])
@@ -53,14 +53,14 @@ def test_matrix_min2():
     z = x.min(0)  # [1, 1, 1, 7, 1]
 
     assert z.data.tolist() == [1, 1, 1, 7, 1]
-    z.backward([1, 1, 1, 1, 1])
+    z.backward(np.array([1, 1, 1, 1, 1]))
 
     grad = [[1., 1., 0., 0., 1.],
             [0., 0., 0., 0., 0.],
             [0., 0., 0., 1., 0.],
             [0., 0., 1., 0., 0.]]
 
-    np.testing.assert_array_almost_equal(x.grad.data, np.array(grad))
+    np.testing.assert_array_almost_equal(x.grad, np.array(grad))
 
 
 def test_matrix_with_axis():
@@ -85,7 +85,7 @@ def test_matrix_with_axis():
     my.sum().backward()
     ty.values.sum().backward()
 
-    np.testing.assert_array_almost_equal(tx.grad.data, mx.grad.data)
+    np.testing.assert_array_almost_equal(tx.grad, mx.grad)
 
 
 def test_matrix_with_negative_axis():
@@ -103,4 +103,4 @@ def test_matrix_with_negative_axis():
     my.sum().backward()
     ty.values.sum().backward()
 
-    np.testing.assert_array_almost_equal(tx.grad.data, mx.grad.data)
+    np.testing.assert_array_almost_equal(tx.grad, mx.grad)

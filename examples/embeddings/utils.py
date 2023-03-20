@@ -40,7 +40,7 @@ class Vocabulary:
             for token in sentence:
                 token_freqs[token] += 1
 
-        unique_tokens = [UNK_TOKEN] + (reserved_tokens if reserved_tokens else [])
+        unique_tokens = (reserved_tokens if reserved_tokens else []) + [UNK_TOKEN]
         unique_tokens += [token for token, freq in token_freqs.items() \
                           if freq >= min_freq and token != UNK_TOKEN]
         return cls(unique_tokens)
@@ -64,7 +64,7 @@ class Vocabulary:
         if not isinstance(indices, (list, tuple)):
             return self._idx_to_token[indices]
 
-        return [self._idx_to_token(index) for index in indices]
+        return [self._idx_to_token[index] for index in indices]
 
     def to_ids(self, tokens):
         return [self[token] for token in tokens]

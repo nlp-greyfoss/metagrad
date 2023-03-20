@@ -1,26 +1,36 @@
-from typing import Tuple, Union, List, Optional
+from typing import Tuple, Union, List
 
 import numpy as np
 
+from metagrad import cuda
 from metagrad.cuda import get_array_module
-from metagrad.ops import Function
+from metagrad.ops import Function, broadcast_grad_shape, unbroadcast
 from metagrad.tensor import Tensor, NdArray
 
 
 # ----激活函数----
-class Relu(Function):
-    '''
-    实现relu激活函数
-    '''
-
+class ReLU(Function):
     def forward(self, x: NdArray) -> NdArray:
-        self.save_for_backward(x)
         xp = get_array_module(x)
-        return xp.maximum(x, 0)
+        y = xp.maximum(x, 0, dtype=x.dtype)
+        self.save_for_backward(y, xp)
+
+        return y
 
     def backward(self, grad: NdArray) -> NdArray:
-        x, = self.saved_tensors
-        return grad * (x > 0)
+        y, xp = self.saved_tensors
+        if xp is np:
+            return grad * (y > 0)
+        else:
+            return cuda.elementwise(
+                'T y, T gy', 'T gx',
+                'gx = y > 0 ? gy : (T)0', 'relu_bwd')(y, grad)
+
+
+# def relu(x: Tensor) -> Tensor:
+#     return x * (x > 0)
+def relu(x: Tensor) -> Tensor:
+    return ReLU()(x)
 
 
 class LeakyRelu(Function):
@@ -50,23 +60,51 @@ class ELU(Function):
         return grad * mask
 
 
-def logsumexp(x: Tensor, axis=-1):
-    b = x.max(axis=axis, keepdims=True)
-    return b + (x - b).exp().sum(axis=axis, keepdims=True).log()
+class Sigmoid(Function):
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+
+        # assert xp is np
+
+        if xp is np:
+            half = x.dtype.type(0.5)
+            y = np.tanh(x * half) * half + half
+        else:
+            y = cuda.elementwise(
+                'T x', 'T y', 'y = tanh(x * 0.5) * 0.5 + 0.5',
+                'sigmoid_fwd')(x)
+
+        self.save_for_backward(y, xp)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        y, xp = self.saved_tensors
+        if xp is np:
+            one = y.dtype.type(1)
+            return grad * y * (one - y)
+        else:
+            return cuda.elementwise(
+                'T y, T gy', 'T gx',
+                'gx = gy * y * (1 - y)',
+                'sigmoid_bwd')(y, grad)
 
 
 def sigmoid(x: Tensor) -> Tensor:
-    return 1. / (1. + (-x).exp())
+    '''
+        重写 return 1. / (1. + (-x).exp()) 加快速度
+
+    Args:
+        x:
+
+    Returns:
+
+    '''
+    return Sigmoid()(x)
 
 
 def logsigmoid(x: Tensor) -> Tensor:
     return sigmoid(x).log()
-
-
-# def relu(x: Tensor) -> Tensor:
-#     return x * (x > 0)
-def relu(x: Tensor) -> Tensor:
-    return Relu()(x)
 
 
 # def leaky_relu(x: Tensor, slope: float = 0.1) -> Tensor:
@@ -89,14 +127,98 @@ def softplus(x: Tensor, beta: float = 1) -> Tensor:
     return (1 + (beta * x).exp()).log() / beta
 
 
+class Tanh(Function):
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+        if xp is np:
+            y = np.tanh(x)
+        else:
+            y = cuda.elementwise(
+                'T x', 'T y', 'y = tanh(x)',
+                'tanh_fwd')(x)
+
+        self.save_for_backward(y, xp)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        y, xp = self.saved_tensors
+        if xp is np:
+            one = y.dtype.type(1)
+            return grad * (one - y * y)
+        else:
+            return cuda.elementwise(
+                'T y, T gy', 'T gx',
+                'gx = gy *  (1 - y*y)',
+                'tanh_bwd')(y, grad)
+
+
 def tanh(x: Tensor) -> Tensor:
-    return 2 * sigmoid(2 * x) - 1
+    return Tanh()(x)
+
+
+class Softmax(Function):
+    def __init__(self, axis=1):
+        super().__init__()
+        self.axis = axis
+
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+
+        y = x - x.max(axis=self.axis, keepdims=True)
+        xp.exp(y, out=y)
+        y /= y.sum(axis=self.axis, keepdims=True)
+
+        self.save_for_backward(y, xp)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        y, xp = self.saved_tensors
+
+        gx = y * grad
+        dx = gx.sum(axis=self.axis, keepdims=True)
+        gx -= y * dx
+
+        return gx
 
 
 def softmax(x: Tensor, axis=-1):
+    # b = x.max(axis=axis, keepdims=True)
+    # y = (x - b).exp()
+    # return y / y.sum(axis=axis, keepdims=True)
+
+    return Softmax(axis=axis)(x)
+
+
+def _logsumexp(x: NdArray, axis=-1):
+    xp = get_array_module(x)
     b = x.max(axis=axis, keepdims=True)
-    y = (x - b).exp()
-    return y / y.sum(axis=axis, keepdims=True)
+    y = x - b
+    xp.exp(y, out=y)
+    s = y.sum(axis=axis, keepdims=True)
+    xp.log(s, out=s)
+    b += s
+    return b
+
+
+class LogSoftmax(Function):
+
+    def __init__(self, axis=-1):
+        super().__init__()
+        self.axis = axis
+
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+
+        y = x - _logsumexp(x, self.axis)
+        self.save_for_backward(y, xp)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        y, xp = self.saved_tensors
+        return grad - xp.exp(y) * grad.sum(axis=self.axis, keepdims=True)
 
 
 def log_softmax(x: Tensor, axis=-1):
@@ -105,12 +227,12 @@ def log_softmax(x: Tensor, axis=-1):
     :param axis:
     :return:
     '''
-    return x - logsumexp(x, axis)
+    return LogSoftmax(axis=axis)(x)
 
 
 def _reduction(errors: Tensor, method: str) -> Tensor:
     if method == "mean":
-        loss = errors.sum() / float(errors.shape[0])
+        loss = errors.sum() / errors.shape[0]
     elif method == "sum":
         loss = errors.sum()
     else:
@@ -167,19 +289,58 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     return nll_loss(log_y, target, reduction)
 
 
-def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
+class Dropout(Function):
+
+    def __init__(self, p: float = 0.5):
+        '''
+        丢弃掩码 1代表保留，0代表丢弃 以1-p的概率生成输出为1伯努利分布，做了input的元素个数这么多次实验
+
+        Args:
+            p: dropout ratio 丢弃率
+        '''
+        super().__init__()
+        self.p = p
+
+    def forward(self, x: NdArray) -> NdArray:
+        xp = get_array_module(x)
+
+        if xp is np:
+            scale = x.dtype.type(1. / 1 - self.p)
+            flag = np.random.rand(*x.shape) >= self.p
+            mask = scale * flag
+            # 让输入乘上这个与之同shape的flag，然后除以1-p进行缩放，这样在测试时，可以原样输出
+            y = x * mask
+        else:
+            rand = xp.random.rand(*x.shape, dtype=np.float32)
+            scale = x.dtype.type(1. / (1 - self.p))
+            mask, y = cuda.elementwise(
+                'T x, R r, T scale, T p', 'T mask, T y',
+                '''
+                mask = (r >= p) * scale;
+                y = x * mask;
+                ''',
+                'dropout_fwd',
+            )(x, rand, scale, self.p)
+
+        self.save_for_backward(mask)
+
+        return y
+
+    def backward(self, grad: NdArray) -> NdArray:
+        mask, = self.saved_tensors
+        return grad * mask
+
+
+def dropout(x: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
     """
-    input: 输入
+    x: 输入
     p: dropout ratio 丢弃率
     training: 是否为训练阶段
     """
     if training:
-        # 丢弃掩码 1代表保留，0代表丢弃 以1-p的概率生成输出为1伯努利分布，做了input的元素个数这么多次实验
-        mask = input.device.xp.random.binomial(1, 1 - p, size=input.shape)
-        # 让输入乘上这个与之同shape的丢弃掩码，然后除以1-p进行缩放，这样在测试时，可以原样输出
-        return input * Tensor(mask, requires_grad=False) / (1 - p)
+        return Dropout(p=p)(x)
     else:
-        return input
+        return x
 
 
 class Embedding(Function):
@@ -208,6 +369,25 @@ def embedding(weight: Tensor, indices: Tensor) -> Tensor:
     return Embedding()(weight, indices)
 
 
+class MaskedSelect(Function):
+    def forward(self, x: NdArray, mask: NdArray) -> NdArray:
+        self.save_for_backward(x.shape, mask)
+        return x[mask]
+
+    def backward(self, grad: NdArray) -> NdArray:
+        x_shape, mask = self.saved_tensors
+        xp = get_array_module(grad)
+
+        bigger_grad = xp.zeros(x_shape, dtype=grad.dtype)
+
+        bigger_grad[mask] = grad
+        return bigger_grad
+
+
+def masked_select(x: Tensor, mask):
+    return MaskedSelect()(x, mask)
+
+
 class Split(Function):
     '''Stack的逆操作'''
 
@@ -221,8 +401,8 @@ class Split(Function):
 
     def backward(self, *grad: List[NdArray]) -> NdArray:
         xp, axis, shape, dtype = self.saved_tensors
-        grads = [Tensor(xp.zeros(shape, dtype)) if g is None else Tensor(g) for g in grad]
-        return stack(grads, axis)
+        grads = [xp.zeros(shape, dtype) if g is None else g for g in grad]
+        return xp.stack(grads, axis=axis)
 
 
 def split(x: Tensor, axis: int = 0):
@@ -242,16 +422,18 @@ class Stack(Function):
 
     '''
 
-    def forward(self, *inputs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int) -> NdArray:
+    def forward(self, *inputs: Union[Tuple[NdArray, ...], List[NdArray]], axis: int) -> NdArray:
         xp = get_array_module(inputs[0])
         ret = xp.stack(inputs, axis=axis)
-        self.save_for_backward(axis)
+        self.save_for_backward(axis, xp)
         return ret
 
     def backward(self, grad: NdArray) -> NdArray:
-        axis, = self.saved_tensors
-        # todo 支持gpu
-        return split(Tensor(grad), axis)
+        axis, xp = self.saved_tensors
+
+        grads = xp.split(grad, grad.shape[axis], axis)
+        grads = [xp.squeeze(g, axis) for g in grads]  # 去掉维度axis
+        return tuple(grads)
 
 
 def stack(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
@@ -265,11 +447,11 @@ class Cat(Function):
 
     def forward(self, *inputs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = -1) -> NdArray:
         xp = get_array_module(inputs[0])
-        self.save_for_backward(inputs, axis)
+        self.save_for_backward(inputs, axis, xp)
         return xp.concatenate(inputs, axis)
 
     def backward(self, grad: NdArray) -> NdArray:
-        inputs, axis = self.saved_tensors
+        inputs, axis, xp = self.saved_tensors
         if len(inputs) == 1:
             return grad
 
@@ -277,7 +459,8 @@ class Cat(Function):
         sizes = np.array(
             [x.shape[axis] for x in inputs[:-1]]
         ).cumsum()  # 计算累积和
-        return chunk(Tensor(grad), sizes, axis)
+
+        return tuple(xp.array_split(grad, sizes, axis))
 
 
 def cat(xs: Union[Tuple[Tensor, ...], List[Tensor]], axis: int = 0):
@@ -299,8 +482,8 @@ class Chunk(Function):
 
     def backward(self, *grad: List[NdArray]) -> NdArray:
         xp, axis, shapes, dtype = self.saved_tensors
-        grads = [Tensor(xp.zeros(shape, dtype=dtype)) if g is None else Tensor(g) for g, shape in zip(grad, shapes)]
-        return cat(grads, axis)
+        grads = [xp.zeros(shape, dtype=dtype) if g is None else g for g, shape in zip(grad, shapes)]
+        return xp.concatenate(grads, axis)
 
 
 def chunk(input: Tensor, chunks: int, axis=0):
@@ -320,6 +503,20 @@ class Flip(Function):
 
 def flip(x: Tensor, axis: Union[int, Tuple] = None):
     return Flip()(x, axis=axis)
+
+
+class Bmm(Function):
+    def forward(self, x: NdArray, y: NdArray) -> NdArray:
+        self.save_for_backward(x, y)
+        return x @ y
+
+    def backward(self, grad: NdArray) -> Tuple[NdArray, NdArray]:
+        x, y = self.saved_tensors
+        return grad @ y.swapaxes(-2, -1), x.swapaxes(-2, -1) @ grad
+
+
+def bmm(x: Tensor, y: Tensor):
+    return Bmm()(x, y)
 
 
 # 简单的norm实现
@@ -345,3 +542,186 @@ def cos_sim(u: Tensor, v: Tensor, axis=1):
     # print(f'shape:{fz.shape}')
     # print(f'u_norm:{(u_norm * v_norm).shape}')
     # return (u / u_norm) * (v / v_norm)
+
+
+"""
+RNN 相关
+"""
+
+
+def linear(input, weight, bias=None):
+    '''
+    简单的代偏置的线性运算
+    Args:
+        input:
+        weight:
+        bias:
+
+    Returns:
+
+    '''
+    output = input @ weight.T
+    if bias is not None:
+        output += bias
+
+    return output
+
+
+def RNNReLUCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
+    hy = relu(linear(input, w_ih, b_ih) + linear(hidden, w_hh, b_hh))
+    return hy
+
+
+def RNNTanhCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
+    # tanh(input * w_ih + b_ih + hidden * w_hh + b_hh)
+    hy = tanh(linear(input, w_ih, b_ih) + linear(hidden, w_hh, b_hh))
+    return hy
+
+
+def LSTMCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
+    hx, cx = hidden
+    ifgo = linear(input, w_ih, b_ih) + linear(hx, w_hh, b_hh)
+    # 一次性计算三个门与g_t
+    i, f, g, o = chunk(ifgo, 4, 1)
+
+    i = sigmoid(i)
+    f = sigmoid(f)
+    g = tanh(g)
+    o = sigmoid(o)
+
+    cy = (f * cx) + (i * g)
+    hy = o * tanh(cy)
+
+    return hy, cy
+
+
+def GRUCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
+    gi = linear(input, w_ih, b_ih)
+    gh = linear(hidden, w_hh, b_hh)
+
+    i_r, i_z, i_g = chunk(gi, 3, 1)
+    h_r, h_z, h_g = chunk(gh, 3, 1)
+
+    r = sigmoid(i_r + h_r)  # 重置门
+    i = sigmoid(i_z + h_z)  # 更新门
+
+    n_g = tanh(i_g + r * h_g)  # 候选状态
+    hy = n_g + i * (hidden - n_g)
+    return hy
+
+
+def StackedRNN(inners, num_layers, lstm=False, dropout_ratio=0, train=True):
+    '''
+
+    Args:
+        inners: 堆叠的RNN单元列表
+        num_layers: 层数
+        lstm: 是否为lstm
+        dropout_ratio: dropout 比率
+        train: 是否为训练阶段
+
+    Returns:
+
+    '''
+    num_directions = len(inners)
+    total_layers = num_layers * num_directions
+
+    def forward(input, hidden, weight):
+        assert len(weight) == total_layers
+        next_hidden = []
+        if lstm:
+            hidden = list(zip(*hidden))
+
+        for i in range(num_layers):
+            all_output = []
+            for j, inner in enumerate(inners):
+                l = i * num_directions + j  # 层数
+
+                hy, output = inner(input, hidden[l], weight[l])
+                next_hidden.append(hy)
+                all_output.append(output)
+
+            input = cat(all_output, input.ndim - 1)
+
+            if dropout_ratio != 0 and i < num_layers - 1:  # 如果不是最后一层，且dropout不为零
+                input = dropout(input, p=dropout_ratio, training=train)
+
+        if lstm:
+            next_h, next_c = zip(*next_hidden)
+            next_hidden = (
+                cat(next_h, 0).view(total_layers, *next_h[0].shape),
+                cat(next_c, 0).view(total_layers, *next_c[0].shape)
+            )
+        else:
+            next_hidden = cat(next_hidden, 0).view(
+                total_layers, *next_hidden[0].shape
+            )
+
+        return next_hidden, input
+
+    return forward
+
+
+def Recurrent(inner, reverse=False):
+    def forward(input, hidden, weight):
+        output = []
+        #
+        steps = range(input.size(0) - 1, -1, -1) if reverse else range(input.size(0))
+
+        for i in steps:
+            hidden = inner(input[i], hidden, *weight)
+            # tuple就是LSTM
+            output.append(hidden[0] if isinstance(hidden, tuple) else hidden)
+
+        if reverse:
+            output.reverse()
+
+        output = cat(output, 0).view(input.size(0), *output[0].shape)
+
+        return hidden, output
+
+    return forward
+
+
+def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bidirectional=False):
+    if mode == 'RNN_RELU':
+        cell = RNNReLUCell
+    elif mode == 'RNN_TANH':
+        cell = RNNTanhCell
+    elif mode == 'LSTM':
+        cell = LSTMCell
+    else:
+        cell = GRUCell
+
+    if bidirectional:
+        layer = (Recurrent(cell), Recurrent(cell, reverse=True))
+    else:
+        layer = (Recurrent(cell),)
+
+    func = StackedRNN(layer,
+                      num_layers,
+                      (mode == 'LSTM'),
+                      dropout_ratio=dropout,
+                      train=train)
+
+    def forward(input, weight, hidden):
+        if batch_first:
+            input = input.transpose((1, 0, 2))
+
+        nexth, output = func(input, hidden, weight)
+
+        if batch_first:
+            output = output.transpose((1, 0, 2))
+
+        return output, nexth
+
+    return forward
+
+
+def RNN(*args, **kwargs):
+    def forward(input, *fargs, **fkwargs):
+        func = AutogradRNN(*args, **kwargs)
+
+        return func(input, *fargs, **fkwargs)
+
+    return forward
