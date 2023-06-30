@@ -340,27 +340,127 @@ def ngrams_iterator(token_list, ngrams):
             yield " ".join(x)
 
 
-def clip_grad_norm_(parameters, max_norm: float, norm_type: float = 2.0):
-    if isinstance(parameters, Tensor):
-        parameters = [parameters]
+def grad_clipping(model: nn.Module, theta: float):
+    """梯度裁剪，参考d2l"""
+    params = [p for p in model.parameters() if p.requires_grad]
 
-    grads = [p.grad for p in parameters if p.grad is not None]
-    max_norm = float(max_norm)
-    norm_type = float(norm_type)
+    xp = get_array_module(params[0].grad)
 
-    xp = get_array_module(grads[0])
+    norm = xp.sqrt(sum(xp.sum((p.grad ** 2)) for p in params))
+    coef = theta / norm
+    if norm > theta:
+        for p in params:
+            p.grad[:] *= coef
 
-    if norm_type == float('inf'):
-        norms = [xp.max(xp.abs(g)) for g in grads]
-        total_norm = norms[0] if len(norms) == 1 else xp.max(xp.concatenate(norms))
-    else:
-        norm = xp.linalg.norm  # norm(g, norm_type)
-        total_norm = norm(xp.stack([norm(g, norm_type) for g in grads]), norm_type)
 
-    clip_coef = max_norm / (total_norm + 1e-6)
-    clip_coef_clamped = xp.clip(clip_coef, a_max=1.0)
+PackedSequence_ = namedtuple('PackedSequence', ['data', 'batch_sizes'])
 
-    for p in parameters:
-        p.grad *= clip_coef_clamped
 
-    return total_norm
+class PackedSequence(PackedSequence_):
+    """
+    Attributes:
+        data (Variable): Variable containing packed sequence
+        batch_sizes (list[int]): list of integers holding information about
+            the batch size at each sequence step
+    """
+    pass
+
+
+def pack_padded_sequence(input, lengths, batch_first=False):
+    """Packs a Variable containing padded sequences of variable length.
+
+      Input can be of size ``TxBx*`` where T is the length of the longest sequence
+      (equal to ``lengths[0]``), B is the batch size, and * is any number of
+      dimensions (including 0). If ``batch_first`` is True ``BxTx*`` inputs are
+      expected.
+
+      The sequences should be sorted by length in a decreasing order, i.e.
+      ``input[:,0]`` should be the longest sequence, and ``input[:,B-1]`` the
+      shortest one.
+
+      Note:
+          This function accept any input that has at least two dimensions. You
+          can apply it to pack the labels, and use the output of the RNN with
+          them to compute the loss directly. A Variable can be retrieved from
+          a :class:`PackedSequence` object by accessing its ``.data`` attribute.
+
+      Arguments:
+          input (Variable): padded batch of variable length sequences.
+          lengths (list[int]): list of sequences lengths of each batch element.
+          batch_first (bool, optional): if True, the input is expected in BxTx*
+              format.
+
+      Returns:
+          a :class:`PackedSequence` object
+    """
+    if batch_first:
+        input = input.transpose(1, 0, 2)
+
+    steps = []
+    batch_sizes = []
+    lengths_iter = reversed(lengths)
+    current_length = next(lengths_iter)
+    batch_size = input.size(1)
+
+    for step, step_value in enumerate(input, 1):
+        steps.append(step_value[:batch_size])
+        batch_sizes.append(batch_size)
+
+        while step == current_length:
+            try:
+                new_length = next(lengths_iter)
+            except StopIteration:
+                current_length = None
+                break
+
+            if current_length > new_length:  # remember that new_length is the preceding length in the array
+                raise ValueError("lengths array has to be sorted in decreasing order")
+            batch_size -= 1
+            current_length = new_length
+        if current_length is None:
+            break
+
+    return PackedSequence(F.cat(steps), batch_sizes)
+
+
+def pad_packed_sequence(sequence, batch_first=False):
+    """Pads a packed batch of variable length sequences.
+
+    It is an inverse operation to :func:`pack_padded_sequence`.
+
+    The returned Variable's data will be of size TxBx*, where T is the length
+    of the longest sequence and B is the batch size. If ``batch_first`` is True,
+    the data will be transposed into BxTx* format.
+
+    Batch elements will be ordered decreasingly by their length.
+
+    Arguments:
+        sequence (PackedSequence): batch to pad
+        batch_first (bool, optional): if True, the output will be in BxTx*
+            format.
+
+    Returns:
+        Tuple of Variable containing the padded sequence, and a list of lengths
+        of each sequence in the batch.
+    """
+    var_data, batch_sizes = sequence
+    max_batch_size = batch_sizes[0]
+    output = Tensor.zeros((len(batch_sizes), max_batch_size, *var_data.size()[1:]))
+
+    lengths = []
+    data_offset = 0
+    prev_batch_size = batch_sizes[0]
+    for i, batch_size in enumerate(batch_sizes):
+        output[i, :batch_size] = var_data[data_offset:data_offset + batch_size]
+        data_offset += batch_size
+
+        dec = prev_batch_size - batch_size
+        if dec > 0:
+            lengths.extend((i,) * dec)
+        prev_batch_size = batch_size
+    lengths.extend((i + 1,) * batch_size)
+    lengths.reverse()
+
+    if batch_first:
+        output = output.transpose(1, 0, 2)
+    return output, lengths

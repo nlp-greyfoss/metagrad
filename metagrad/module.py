@@ -159,7 +159,7 @@ class Module:
     def save(self, path='model.pt'):
         self.to_cpu()
         with open(path, 'wb') as f:
-            print(f'Saving {self} to {path}')
+            # print(f'Saving {self} to {path}')
             pickle.dump(self, f)
 
     def load(self, path='model.pt'):
@@ -744,10 +744,11 @@ class RNNBase(Module):
 
         if hx is None:
             num_directions = 2 if self.bidirectional else 1
+            # (num_layers * num_directions, batch_size, hidden_size)
             hx = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), device=input.device)
 
             if self.mode == 'LSTM':
-                hx = (hx, hx)
+                hx = (hx, hx) # 如果是LSTM，同时初始化隐藏状态h，与单元状态c
 
         func = F.RNN(
             self.mode,

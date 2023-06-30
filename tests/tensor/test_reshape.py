@@ -12,7 +12,7 @@ def test_simple_reshape():
 
 
 def test_reshape():
-    x = Tensor(np.arange(9), requires_grad=True)
+    x = Tensor.arange(9, requires_grad=True)
     z = x.reshape(3, 3)
     z.backward(np.ones((3, 3)))
 
@@ -20,7 +20,7 @@ def test_reshape():
 
 
 def test_matrix_reshape():
-    x = Tensor(np.arange(12).reshape(2, 6), requires_grad=True)
+    x = Tensor(np.arange(12).reshape(2, 6).astype(np.float32), requires_grad=True)
     z = x.reshape(4, 3)
 
     z.backward(np.ones((4, 3)))

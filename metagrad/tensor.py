@@ -106,7 +106,7 @@ class OpWrapper:
         self.name = f"back_{name}" if backward else name
         self.xs = xs
         self.output = None
-        threshold = int(os.getenv('THRESHOLD', 0))
+        threshold = int(os.getenv('THRESHOLD', 2))
 
         self.threshold = threshold
 
@@ -188,6 +188,13 @@ class Tensor:
     def dtype(self):
         '''返回Tensor中数据的类型'''
         return self.data.dtype
+
+    def type(self, dtype):
+        self.data.astype(dtype)
+        return self
+
+    def float(self):
+        return self.type(np.float)
 
     @property
     def device(self):
@@ -350,13 +357,20 @@ class Tensor:
     def arange(cls, stop, start=0, step=1, dtype=float_type, device=None, **kwargs) -> "Tensor":
         device = get_device(device)
         xp = device.xp
-        return cls(xp.arange(stop, start, step).astype(dtype), device=device, **kwargs)
+        return cls(data=xp.arange(stop=stop, start=start, step=step, dtype=dtype), device=device, **kwargs)
 
     @classmethod
     def eye(cls, dim, dtype=float_type, device=None, **kwargs) -> "Tensor":
         device = get_device(device)
         xp = device.xp
         return cls(xp.eye(dim).astype(dtype), device=device, **kwargs)
+
+    @classmethod
+    def full_like(cls, t: "Tensor", fill_value, dtype=float_type, requires_grad=False, device=None,
+                  **kwargs) -> "Tensor":
+        device = get_device(device)
+        xp = device.xp
+        return cls(xp.full(t.shape, fill_value), device=device, **kwargs)
 
     @classmethod
     def uniform(cls, *shape, low: float = -1.0, high: float = 1.0,
@@ -403,7 +417,6 @@ class Tensor:
         if isinstance(value, Tensor):
             value = value.data
         self.data[key] = value
-        # self._grad = None
         return self
 
     def __ne__(self, other):
@@ -431,6 +444,9 @@ class Tensor:
 
     def view(self, *shape):
         return self.reshape(shape)
+
+    def permute(self, *shape):
+        return self._get_ops('transpose')(shape)
 
     def expand_dims(self, axis: int):
         return self._get_ops('expanddims')(axis)

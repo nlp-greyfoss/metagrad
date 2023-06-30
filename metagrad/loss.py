@@ -51,8 +51,9 @@ class BCELoss(_Loss):
 
 
 class CrossEntropyLoss(_Loss):
-    def __init__(self, reduction: str = "mean") -> None:
+    def __init__(self, reduction: str = "mean", ignore_index=-100) -> None:
         super().__init__(reduction)
+        self.ignore_index = ignore_index
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         '''
@@ -60,12 +61,14 @@ class CrossEntropyLoss(_Loss):
         :param target: 真实标签one-hot向量
         :return:
         '''
-        return F.cross_entropy(input, target, self.reduction)
+        return F.cross_entropy(input, target, self.reduction, self.ignore_index)
 
 
 class NLLLoss(_Loss):
-    def __init__(self, reduction: str = "mean") -> None:
+    def __init__(self, reduction: str = "mean", ignore_index=-100) -> None:
         super().__init__(reduction)
+        self.ignore_index = ignore_index
+
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         '''
@@ -73,4 +76,4 @@ class NLLLoss(_Loss):
         :param target: 类别索引 或 one-hot向量
         :return:
         '''
-        return F.nll_loss(input, target, self.reduction)
+        return F.nll_loss(input, target, self.reduction, self.ignore_index)

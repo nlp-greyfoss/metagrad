@@ -77,3 +77,30 @@ def test_simple_nll_loss_class_indices():
     tl.backward()
 
     assert np.allclose(mx.grad, tx.grad)
+
+
+def test_with_ignore_index():
+    batch_size = 6
+    num_classes = 4
+    x = np.random.randn(batch_size, num_classes)
+    t = np.random.randint(0, num_classes - 1, size=batch_size)  # 数值标签
+    ignore_index = 2
+
+    mx = Tensor(x, requires_grad=True)
+    mt = Tensor(t)
+
+    tx = torch.tensor(x, dtype=torch.float32, requires_grad=True)
+    tt = torch.tensor(t, dtype=torch.int64)
+
+    my_loss = NLLLoss(ignore_index=ignore_index, reduction='mean')
+    torch_loss = torch.nn.NLLLoss(ignore_index=ignore_index, reduction='mean')
+
+    # 先调用各自的log_softmax转换为对数概率
+    ml = my_loss(F.log_softmax(mx), mt)
+    tl = torch_loss(torch.log_softmax(tx, dim=1, dtype=torch.float32), tt)
+    assert np.allclose(ml.item(), tl.item())
+
+    ml.backward()
+    tl.backward()
+
+    assert np.allclose(mx.grad, tx.grad)

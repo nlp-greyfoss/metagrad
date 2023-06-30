@@ -100,10 +100,6 @@ print(device)
 
 for mode in ["RNN", "GRU", "LSTM"]:
     for optim in [SGD, Adam]:
-        if mode == "RNN" and optim is Adam:
-            print(f"Cancel for mode {mode} and optim {optim.__name__}")
-            break
-
         # 加载模型
         model = RNN(len(vocab), embedding_dim, hidden_dim, num_class, n_layers, dropout, bidirectional=True, mode=mode)
         model.to(device)

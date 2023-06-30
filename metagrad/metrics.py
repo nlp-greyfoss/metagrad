@@ -1,5 +1,6 @@
 import collections
 import math
+import numpy as np
 
 from metagrad import Tensor
 from metagrad.utils import ngrams_iterator
@@ -11,10 +12,26 @@ def _compute_ngram_counter(tokens, max_n):
     return ngrams_counter
 
 
+def bleu_score2(pred_seq, label_seq, k=4):
+    pred_tokens, label_tokens = pred_seq.split(' '), label_seq.split(' ')
+    len_pred, len_label = len(pred_tokens), len(label_tokens)
+    score = math.exp(min(0, 1 - len_label / len_pred))
+    for n in range(1, k + 1):
+        num_matches, label_subs = 0, collections.defaultdict(int)
+        for i in range(len_label - n + 1):
+            label_subs[' '.join(label_tokens[i: i + n])] += 1
+        for i in range(len_pred - n + 1):
+            if label_subs[' '.join(pred_tokens[i: i + n])] > 0:
+                num_matches += 1
+                label_subs[' '.join(pred_tokens[i: i + n])] -= 1
+        score *= math.pow(num_matches / (len_pred - n + 1), math.pow(0.5, n))
+    return score
+
+
 def bleu_score(candidate_corpus, references_corpus, max_n=4, weights=[0.25] * 4):
-    clipped_counts = Tensor.zeros(max_n)
-    total_counts = Tensor.zeros(max_n)
-    weights = Tensor(weights)
+    clipped_counts = np.zeros(max_n)
+    total_counts = np.zeros(max_n)
+    weights = np.array(weights)
 
     candidate_len = 0.0
     refs_len = 0.0
@@ -44,8 +61,8 @@ def bleu_score(candidate_corpus, references_corpus, max_n=4, weights=[0.25] * 4)
         return 0.0
     else:
         pn = clipped_counts / total_counts
-        log_pn = weights * pn.log()
-        score = log_pn.sum().exp()
+        log_pn = weights * np.log(pn)
+        score = np.exp(log_pn.sum())
 
         bp = math.exp(min(1 - refs_len / candidate_len, 0))
 
@@ -56,6 +73,6 @@ if __name__ == '__main__':
     # tokens = ['me', 'me', 'you']
     # print(_compute_ngram_counter(tokens, 2))
     candidate_corpus = [['My', 'full', 'pytorch', 'test'], ['Another', 'Sentence']]
-    references_corpus = [[['My', 'full', 'pytorch', 'test'], ['Completely', 'Different']], [['No', 'Match']]]
+    references_corpus = [[['My', 'full', 'pytorch', 'test']], [['No', 'Match']]]
     print(bleu_score(candidate_corpus, references_corpus))
-
+    # print(bleu_score("你 敢 ！", "你 敢 ！", k=4))
