@@ -241,23 +241,63 @@ def _reduction(errors: Tensor, method: str) -> Tensor:
     return loss
 
 
-def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
-    '''
-    负对数似然损失
-    :param input: 对数概率 即 log_softmax
-    :param target:  类别索引 或 one-hot向量
-    :param reduction:
-    :return:
-    '''
-    # 如果target是ont-hot向量
-    if input.ndim == target.ndim and input.shape == target.shape:
-        errors = - target * input
-    else:
-        xp = input.xp
-        # 如果target是类别索引
-        errors = -input[xp.arange(target.shape[0]), target.array()]
+def _softmax(x, axis=1):
+    b = x.max(axis=axis, keepdims=True)
+    y = (x - b).exp()
+    return y / y.sum(axis=axis, keepdims=True)
 
-    return _reduction(errors, reduction)
+
+class NLLLoss(Function):
+    def __init__(self, ignore_index=-100, reduction: str = "mean"):
+        """
+
+        Args:
+            ignore_index: 忽略的标签，可以是padding的标签(一般为0)，默认为-100
+            reduction:
+        """
+        super().__init__()
+        self.ignore_index = ignore_index
+        self.reduction = reduction
+
+    def forward(self, input, target) -> NdArray:
+        """
+        Args:
+            input: 对数概率 即 log_softmax 形状 (batch_size, num_classes)
+            target:  类别索引 或 one-hot向量 形状为 (batch_size,) 或 (batch_size, num_classes)
+
+        Returns:
+        """
+        xp = get_array_module(input)
+
+        # 如果target是ont-hot向量，转换为一维向量
+        if target.ndim > 1:
+            target = xp.argmax(target, axis=1)
+
+        batch_size, num_classes = input.shape
+        # 根据ignore_index对标签进行忽略
+        mask = (target != self.ignore_index).astype(int)
+
+        errors = -xp.sum(input[xp.arange(batch_size), target] * mask, dtype=input.dtype)
+        if self.reduction == 'mean':
+            errors = xp.divide(errors, mask.sum(), dtype=input.dtype)
+
+        self.save_for_backward(xp, target, input, batch_size, num_classes, mask)
+        return errors
+
+    def backward(self, grad: NdArray) -> NdArray:
+        xp, target, input, batch_size, num_classes, mask = self.saved_tensors
+
+        if target.ndim > 1:
+            target = xp.argmax(target, axis=1)
+
+        bigger_grad = xp.zeros((batch_size, num_classes), dtype=grad.dtype)
+        bigger_grad[xp.arange(batch_size), target] = xp.divide(-mask, mask.sum(), dtype=input.dtype)
+
+        return bigger_grad
+
+
+def nll_loss(input: Tensor, target: Tensor, reduction: str = "mean", ignore_index=-100):
+    return NLLLoss(ignore_index, reduction)(input, target)
 
 
 def binary_cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
@@ -275,7 +315,7 @@ def binary_cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean")
     return _reduction(errors, reduction)
 
 
-def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
+def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean", ignore_index=-100) -> Tensor:
     '''
 
     :param input: logits
@@ -286,7 +326,7 @@ def cross_entropy(input: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     # 先计算logsoftmax
     log_y = log_softmax(input)
     # 基于nll实现交叉熵损失
-    return nll_loss(log_y, target, reduction)
+    return nll_loss(log_y, target, reduction, ignore_index)
 
 
 class Dropout(Function):
@@ -551,7 +591,7 @@ RNN 相关
 
 def linear(input, weight, bias=None):
     '''
-    简单的代偏置的线性运算
+    简单的带偏置的线性运算
     Args:
         input:
         weight:
@@ -614,7 +654,7 @@ def StackedRNN(inners, num_layers, lstm=False, dropout_ratio=0, train=True):
     '''
 
     Args:
-        inners: 堆叠的RNN单元列表
+        inners: RNN Recurrent，双向的话就是一个元组
         num_layers: 层数
         lstm: 是否为lstm
         dropout_ratio: dropout 比率
@@ -623,36 +663,54 @@ def StackedRNN(inners, num_layers, lstm=False, dropout_ratio=0, train=True):
     Returns:
 
     '''
-    num_directions = len(inners)
-    total_layers = num_layers * num_directions
+    num_directions = len(inners)  # 长度就是方向数
+    total_layers = num_layers * num_directions  # 带方向的“总层数”为 传入的层数 乘 方向数
 
     def forward(input, hidden, weight):
-        assert len(weight) == total_layers
-        next_hidden = []
+        """
+        StackedRNN的真正执行函数
+        Args:
+            input:  输入大小始终为 (seq_len, batch_size, input_size)
+            hidden: 隐藏状态（num_layers * num_directions, batch_size, hidden_size)
+            weight: all_weights
+
+        Returns:
+
+        """
+        assert len(weight) == total_layers  # 确保总层数等于all_weights长度
+        next_hidden = []  # 保存每层RNN最后的输出
         if lstm:
+            # 对(h, c)第0个维度，即total_layers，上打包成大小为2的元组并转换为元组列表，列表大小为total_layers，元组中元素大小为(batch_size, hidden_size)
             hidden = list(zip(*hidden))
 
-        for i in range(num_layers):
-            all_output = []
+        for i in range(num_layers):  # 一层一层计算，由底向上
+            all_output = []  # 保存所有方向上每个时间步的输出
+            # 如果是双向，相当于多了一层
             for j, inner in enumerate(inners):
                 l = i * num_directions + j  # 层数
-
+                # 在输入input上应用rnn，传入每层的隐藏状态，以及参数
+                # hy:
+                #   LSTM ((batch_size, hidden_size), (batch_size, hidden_size))
+                #   非LSTM (batch_size, hidden_size)
+                # output (seq_len, batch_size, hidden_size))
                 hy, output = inner(input, hidden[l], weight[l])
                 next_hidden.append(hy)
                 all_output.append(output)
-
+            # 在最后一个维度上拼接all_output，作为下一层(如果有的话)的输入。 双向的情况下会使得最后一个维度数乘2
             input = cat(all_output, input.ndim - 1)
-
+            # 多层之间进行dropout
             if dropout_ratio != 0 and i < num_layers - 1:  # 如果不是最后一层，且dropout不为零
                 input = dropout(input, p=dropout_ratio, training=train)
 
         if lstm:
             next_h, next_c = zip(*next_hidden)
+            # 根据隐藏状态和单元状态，分别拼接
             next_hidden = (
                 cat(next_h, 0).view(total_layers, *next_h[0].shape),
                 cat(next_c, 0).view(total_layers, *next_c[0].shape)
             )
         else:
+            # 拼接next_hidden列表，转换为大小为(total_layers, batch_size, hidden_size)
             next_hidden = cat(next_hidden, 0).view(
                 total_layers, *next_hidden[0].shape
             )
@@ -663,21 +721,44 @@ def StackedRNN(inners, num_layers, lstm=False, dropout_ratio=0, train=True):
 
 
 def Recurrent(inner, reverse=False):
+    """
+
+    Args:
+        inner: RNN单元具体计算
+        reverse: 是否为反向
+
+    Returns:
+
+    """
+
     def forward(input, hidden, weight):
+        """
+        单层计算：按照时间步从左到右(正向)，或者从右到左(反向)
+        Args:
+            input: 单层的输入 大小 (seq_len, batch_size, hidden_size)
+            hidden: (batch_size, hidden_size)
+            weight:  list[w_ih, w_hh, b_ih, b_hh]
+
+        Returns:
+
+        """
+        # 保存每个时间步隐藏状态的输出
         output = []
-        #
+        # 得到步数索引 正向range(seq_len): [0,1,2,3,4] ; 逆向 range(seq_len-1, -1,-1): [4,3,2,1,0]
         steps = range(input.size(0) - 1, -1, -1) if reverse else range(input.size(0))
-
+        # 通过循环处理每步，下一步的执行依赖上一步的结果
         for i in steps:
+            # 根据当前时间步输入input[i]、上一步隐藏状态hidden，以及权重(按w_ih, w_hh, b_ih, b_hh拆包) 进行具体的RNN计算
             hidden = inner(input[i], hidden, *weight)
-            # tuple就是LSTM
+            # 如果tuple就是LSTM，即包含隐藏状态和单元状态，output只需要隐藏状态的输出
             output.append(hidden[0] if isinstance(hidden, tuple) else hidden)
-
+        # 如果是逆序的，也要将输出逆序。在逆序情况下，output先保存的是最后一个时间步的结果，output逆序后，才能使得时间步位置对应上
         if reverse:
             output.reverse()
-
+        # output原本是一个python列表，调用cat在维度0上间拼接，并转换成一个Tensor，大小为(seq_len * batch_size, hidden_size)
+        # 接着调用reshape，变成大小(seq_len, batch_size, hidden_size)
         output = cat(output, 0).view(input.size(0), *output[0].shape)
-
+        # 返回最后一个时间步的隐藏状态和输出(所有时间步的隐藏状态)
         return hidden, output
 
     return forward
@@ -697,7 +778,7 @@ def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bi
         layer = (Recurrent(cell), Recurrent(cell, reverse=True))
     else:
         layer = (Recurrent(cell),)
-
+    # 堆叠RNN
     func = StackedRNN(layer,
                       num_layers,
                       (mode == 'LSTM'),
@@ -705,13 +786,28 @@ def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bi
                       train=train)
 
     def forward(input, weight, hidden):
-        if batch_first:
-            input = input.transpose((1, 0, 2))
+        """
 
+        Args:
+            input:  输入 (batch_size, seq_len, input_size) 如果是batch_first；否则 (seq_len, batch_size, input_size)
+            weight: all_weights
+            hidden: 隐藏状态（num_layers * num_directions, batch_size, hidden_size)
+
+        Returns:
+
+        """
+        # 确保输入(seq_len, batch_size, input_size)的形式，方便后续通过input[timestep]的方式访问每个时间步的输入
+        if batch_first:
+            input = input.permute(1, 0, 2)
+        # 在输入input上应用RNN，返回(可能包含多层和双向)结果
+        # nexth
+        #   LSTM 包含隐藏状态和单元状态 ((num_layers * num_directions, batch_size, hidden_size), (num_layers * num_directions, batch_size, hidden_size))
+        #   非LSTM 隐藏状态 (num_layers * num_directions, batch_size, hidden_size)
+        # output (seq_len, batch_size, num_directions * hidden_size)
         nexth, output = func(input, hidden, weight)
-
+        # 确保output的形状符合batch_first参数定义
         if batch_first:
-            output = output.transpose((1, 0, 2))
+            output = output.permute(1, 0, 2)
 
         return output, nexth
 
@@ -719,7 +815,32 @@ def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bi
 
 
 def RNN(*args, **kwargs):
+    """
+    Args:
+        *args: mode
+        **kwargs:
+            num_layers
+            batch_first
+            dropout
+            train
+            bidirectional
+    Returns:
+
+    """
+
     def forward(input, *fargs, **fkwargs):
+        """
+        Args:
+            input: 输入 (batch_size, seq_len, input_size) 如果是batch_first；否则 (seq_len, batch_size, input_size)
+            *fargs: (all_weights, hx)
+                all_weights:  所有的参数，包含weight_ih_lxx, weight_hh_lxx, (bias_ih_lxx,  bias_hh_lxx 如果有bias的话) 的参数值。
+                    其中第一个x表示层数；第二个x表示为是否逆向参数。 all_weights保存的是这些参数值
+                hx: 隐藏状态（num_layers * num_directions, batch_size, hidden_size)
+            **fkwargs: None
+
+        Returns:
+
+        """
         func = AutogradRNN(*args, **kwargs)
 
         return func(input, *fargs, **fkwargs)

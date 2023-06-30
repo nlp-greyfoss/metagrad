@@ -22,6 +22,8 @@ def unbroadcast(grad: NdArray, in_shape: Tuple) -> NdArray:
     '''
     # 首先计算维度个数之差
     ndims_added = grad.ndim - len(in_shape)
+    if ndims_added == 0:
+        return grad
     # 由于广播时，先从左边插入，再进行复制，所以逆操作时，也从左边开始，进行复制的逆操作（求和）
     for _ in range(ndims_added):
         # 在axis=0上进行求和，去掉第0个维度，如果ndims_added > 1，就需要不停的在第0个维度上面求和
@@ -134,9 +136,10 @@ class Add(Function):
         在实现反向传播是需要注意
         '''
         # 我们只要保存输入各自的形状即可
+        xp = get_array_module(x)
         self.save_for_backward(x.shape, y.shape)
         # 进行真正的运算
-        return x + y
+        return xp.add(x, y)
 
     def backward(self, grad: NdArray) -> Tuple[NdArray, NdArray]:
         shape_x, shape_y = self.saved_tensors
@@ -218,14 +221,17 @@ class Mul(Function):
         实现 z = x * y
         '''
         # 乘法需要保存输入x和y，用于反向传播
-        self.save_for_backward(x, y)
-        return x * y
+        xp = get_array_module(x)
+
+        self.save_for_backward(xp, x, y)
+
+        return xp.multiply(x, y)
 
     def backward(self, grad: NdArray) -> Tuple[NdArray, NdArray]:
-        x, y = self.saved_tensors
+        xp, x, y = self.saved_tensors
         # 分别返回∂L/∂x 和 ∂L/∂y
+        return unbroadcast(xp.multiply(grad, y), x.shape), unbroadcast(xp.multiply(grad, x), y.shape)
 
-        return unbroadcast(grad * y, x.shape), unbroadcast(grad * x, y.shape)
 
 
 def mul(self, rhs):
@@ -658,6 +664,23 @@ class Slice(Function):
 
         return bigger_grad
 
+# class SetItem(Function):
+#     def forward(self, x: NdArray, slices: Any, value: NdArray) -> NdArray:
+#         xp = get_array_module(x)
+#
+#         y = xp.copy(x)
+#         y[slices] = value
+#
+#         self.save_for_backward(xp, x.shape, slices)
+#
+#         return y
+#
+#     def backward(self, grad) -> NdArray:
+#         xp, x_shape, slices = self.saved_tensors
+#         bigger_grad = xp.zeros_like(x_shape)
+#         bigger_grad[slices] = grad
+#         return bigger_grad
+
 
 class _IndexSelect(Function):
     '''
@@ -719,7 +742,7 @@ class Transpose(Function):
         return grad.transpose(tuple(np.argsort(axes)))
 
 
-Permute = Transpose
+# Permute = Transpose
 
 
 class Repeat(Function):

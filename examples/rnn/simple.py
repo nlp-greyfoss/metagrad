@@ -8,7 +8,7 @@ from metagrad.tensor import Tensor, cuda, debug_mode
 import metagrad.functions as F
 from unidecode import unidecode
 import numpy as np
-from metagrad.optim import Adam, SGD
+from metagrad.optim import Adam, SGD, Adagrad
 from metagrad.loss import CrossEntropyLoss
 from tqdm import tqdm
 
@@ -25,7 +25,6 @@ num_langs = len(lang2label)
 
 char2idx = {letter: i for i, letter in enumerate(ascii_letters + " .,:;-'")}
 num_letters = len(char2idx)
-print(num_letters)
 
 
 def name2tensor(name):
@@ -101,7 +100,7 @@ print_interval = 3000
 model = GRUModel(num_layers=2, hidden_size=hidden_size)
 model.to(device)
 
-optimizer = SGD(model.parameters(), lr=learning_rate)
+optimizer = Adagrad(model.parameters(), lr=learning_rate)
 criterion = CrossEntropyLoss()
 
 import time

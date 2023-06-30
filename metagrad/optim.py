@@ -99,6 +99,65 @@ class SGD(Optimizer):
                     p.add_(d_p, alpha=-lr)
 
 
+class Adagrad(Optimizer):
+    def __init__(self, params, lr=1e-2, lr_decay=0, initial_accumulator_value=0, eps=1e-10, weight_decay=0):
+        defaults = dict(
+            lr=lr,
+            eps=eps,
+            weight_decay=weight_decay,
+            lr_decay=lr_decay,
+            initial_accumulator_value=initial_accumulator_value
+        )
+        super().__init__(params, defaults)
+
+        for group in self.param_groups:
+            for p in group["params"]:
+                state = self.state[p]
+                state["step"] = Tensor(0.)
+
+                init_value = initial_accumulator_value
+                state["sum"] = Tensor.full_like(
+                    p, init_value
+                )
+
+    def _init_group(self, group, params_with_grad, grads, state_sums, state_steps):
+        for p in group["params"]:
+            if p.grad is not None:
+                params_with_grad.append(p)
+                grads.append(p.grad)
+
+                state = self.state[p]
+
+                state_sums.append(state["sum"])
+                state_steps.append(state["step"])
+
+    def step(self) -> None:
+        with no_grad():
+            for group in self.param_groups:
+                params_with_grad = []
+                grads = []
+                state_sums = []
+                state_steps = []
+
+                weight_decay = group['weight_decay']
+                lr = group['lr']
+                lr_decay = group["lr_decay"]
+                eps = group['eps']
+
+                for (param, grad, state_sum, step_t) in zip(params_with_grad, grads, state_sums, state_steps):
+                    # 更新step
+                    step_t += 1
+                    step = step_t.item()
+                    if weight_decay != 0:
+                        grad = grad + weight_decay * param.grad
+
+                    clr = lr / (1 + (step - 1) * lr_decay)
+
+                    state_sum.addcmul_(grad, grad, value=1)
+                    std = state_sum.sqrt().add_(eps)
+                    param.addcdiv_(grad, std, value=-clr)
+
+
 class Adam(Optimizer):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)

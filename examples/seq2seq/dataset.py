@@ -1,11 +1,32 @@
 import numpy as np
 from hanziconv import HanziConv
+import os
 
 from examples.embeddings.utils import Vocabulary, PAD_TOKEN, BOS_TOKEN, EOS_TOKEN
 from metagrad import Tensor
 from metagrad.dataloader import DataLoader
-from metagrad.dataset import Dataset
+from metagrad.dataset import TensorDataset
 from metagrad.utils import pad_sequence
+
+
+# 简单处理中文句子中含有英文标点符号的问题
+def pre_process(file_path):
+    context = ""
+    with open(file_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+        for line in lines:
+            english, chinese = line.split("\t")
+            chinese = chinese.replace(".", "。").replace(",", "，").replace("?", "？").replace("!", "！").replace(" ", "")
+
+            context += f"{english}\t{chinese}"
+
+    with open(file_path, 'w', encoding="utf-8") as f:
+        f.write(context)
+
+
+for root, _, files in os.walk("../data/en-cn"):
+    for file in files:
+        pre_process(os.path.join(root, file))
 
 
 def cht_to_chs(sent):
@@ -35,7 +56,7 @@ def process_nmt(text):
     return ''.join(out)
 
 
-def tokenize_nmt(text, num_examples=None):
+def tokenize_nmt(text, reverse=False, num_examples=None):
     """词元化“英文－中文”数据数据集"""
     source, target = [], []
     for i, line in enumerate(text.split('\n')):
@@ -43,7 +64,10 @@ def tokenize_nmt(text, num_examples=None):
             break
         parts = line.split('\t')
         if len(parts) == 2:
-            source.append(parts[0].split(' '))  # 英文按空格切分
+            src_tokens = parts[0].split(' ')  # 英文按空格切分
+            if reverse:
+                src_tokens.reverse()
+            source.append(src_tokens)
             target.append([char for char in parts[1]])  # 中文按字切分
     return source, target
 
@@ -79,13 +103,18 @@ def truncate_pad(line, max_len, padding_token):
 
 
 def build_array_nmt(lines, vocab, max_len=None):
+    """将机器翻译的文本序列转换成小批量"""
     if not max_len:
         max_len = max(len(x) for x in lines)
 
-    """将机器翻译的文本序列转换成小批量"""
+    # 先转换成token对应的索引列表
     lines = [vocab[l] for l in lines]
-    lines = [l + [vocab[EOS_TOKEN]] for l in lines]
-    return np.array([truncate_pad(l, max_len, vocab[PAD_TOKEN]) for l in lines])
+    # 增加BOS和EOS token的索引
+    lines = [[vocab[BOS_TOKEN]] + l + [vocab[EOS_TOKEN]] for l in lines]
+    # max_len 应该加2了:额外的BOS和EOS ，并转换为seq_len, batch_size的形式
+    array = Tensor([truncate_pad(l, max_len + 2, vocab[PAD_TOKEN]) for l in lines])
+
+    return array
 
 
 # print(truncate_pad(src_vocab[source[0]], 10, src_vocab[PAD_TOKEN]))
@@ -94,34 +123,13 @@ def build_array_nmt(lines, vocab, max_len=None):
 # src_array = build_array_nmt(source, src_vocab, 10)
 # print(src_array)
 
-
-class NMTDataset(Dataset):
-    def __init__(self, data):
-        self.data = np.array(data)
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, i):
-        return self.data[i]
-
-    @staticmethod
-    def collate_fn(examples):
-        src = [Tensor(ex[0]) for ex in examples]
-        tgt = [Tensor(ex[1]) for ex in examples]
-        # 这里只是转换为Tensor向量
-        src = pad_sequence(src)
-        tgt = pad_sequence(tgt)
-        return src, tgt
-
-
-def load_dataset_nmt(data_path, batch_size=32, min_freq=1, max_len=20, src_vocab=None, tgt_vocab=None, shuffle=True):
+def load_dataset_nmt(data_path, batch_size=32, min_freq=1, src_vocab=None, tgt_vocab=None, shuffle=False):
     # 读取原始文本
     raw_text = cht_to_chs(read_nmt(data_path))
     # 处理英文符号
     text = process_nmt(raw_text)
     # 中英文分词
-    source, target = tokenize_nmt(text)
+    source, target = tokenize_nmt(text, reverse=True)
     # 构建源和目标词表
     if src_vocab is None:
         src_vocab = Vocabulary.build(source, min_freq=min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
@@ -130,12 +138,22 @@ def load_dataset_nmt(data_path, batch_size=32, min_freq=1, max_len=20, src_vocab
 
     print(f'Source vocabulary size: {len(src_vocab)}, Target vocabulary size: {len(tgt_vocab)}')
     # 转换成批数据
-    src_array = build_array_nmt(source, src_vocab, max_len)
-    tgt_array = build_array_nmt(target, tgt_vocab, max_len)
+    max_src_len = max([len(line) for line in source])
+    max_tgt_len = max([len(line) for line in target])
+
+    print(f"max_src_len: {max_src_len}, max_tgt_len:{max_tgt_len}")
+
+    # src_array = [src_vocab[line] + [src_vocab[PAD_TOKEN]] * (max_src_len - len(line)) for line in source]
+    # tgt_array = [[tgt_vocab[BOS_TOKEN]] + tgt_vocab[line] + [tgt_vocab[EOS_TOKEN]] +
+    #             [tgt_vocab[PAD_TOKEN]] * (max_tgt_len - len(line)) for line in target]
+
+    src_array = build_array_nmt(source, src_vocab, max_src_len)
+    tgt_array = build_array_nmt(target, tgt_vocab, max_tgt_len)
+
     # 构建数据集
-    dataset = NMTDataset([(src, tgt) for src, tgt in zip(src_array, tgt_array)])
+    dataset = TensorDataset(src_array, tgt_array)
     # 数据加载器
-    data_loader = DataLoader(dataset, batch_size=batch_size, collate_fn=dataset.collate_fn, shuffle=shuffle)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
     # 返回加载器和两个词表
     return data_loader, src_vocab, tgt_vocab
 

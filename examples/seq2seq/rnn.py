@@ -1,328 +1,276 @@
 import random
 from typing import Tuple
 
-from examples.embeddings.utils import BOS_TOKEN, PAD_TOKEN
-from examples.seq2seq.base import Encoder, Decoder
-import metagrad.module as nn
-from examples.seq2seq.dataset import load_dataset_nmt
-from metagrad import Tensor, cuda
-import metagrad.functions as F
-from metagrad.optim import Adam, SGD
-from metagrad.tensor import no_grad, debug_mode
-from metagrad.utils import Animator, Accumulator, Timer, clip_grad_norm_
 from tqdm import tqdm
 
+import metagrad.module as nn
+from examples.embeddings.utils import PAD_TOKEN, EOS_TOKEN, BOS_TOKEN
+from examples.seq2seq.base import Encoder, Decoder
+from examples.seq2seq.dataset import load_dataset_nmt, process_nmt, truncate_pad, read_nmt, cht_to_chs, tokenize_nmt
+from metagrad import Tensor, cuda
+from metagrad import init, debug_mode
+from metagrad import functions as F
+from metagrad.loss import CrossEntropyLoss
+from metagrad.metrics import bleu_score
+from metagrad.optim import Adam
+from metagrad.tensor import no_grad
+from metagrad.utils import grad_clipping
 
-class RNNEncoder(Encoder):
-    '''用RNN实现编码器'''
 
-    def __init__(self, vocab_size, embed_size, num_hiddens, num_layers, dropout=.0, **kwargs):
-        super(RNNEncoder, self).__init__(**kwargs)
-        # 嵌入层 获取输入序列中每个单词的嵌入向量
-        self.embedding = nn.Embedding(vocab_size, embed_size)
-        # 基于单向GRU实现
-        self.rnn = nn.GRU(embed_size, num_hiddens, num_layers, dropout=dropout)
+class NMTEncoder(Encoder):
+    def __init__(self, vocab_size, embed_size, num_hiddens, num_layers, dropout, bidirectional=True):
+        super().__init__()
 
-    def forward(self, X) -> Tensor:
+        # 嵌入层 获取输入序列中每个单词的嵌入向量 padding_idx不需要更新嵌入
+        self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=0)
+        # 基于双向GRU实现
+        self.rnn = nn.GRU(input_size=embed_size, hidden_size=num_hiddens, num_layers=num_layers, dropout=dropout,
+                          bidirectional=bidirectional)
+        #self.dropout = nn.Dropout(dropout)
+
+    def forward(self, input_seq):
         '''
-
-        Args:
-            X:  形状 (batch_size, num_steps)
-        Returns:
-
+               Args:
+                   input_seq:  形状 (seq_len, batch_size)
+               Returns:
         '''
-
-        X = self.embedding(X)  # X 的形状 (batch_size, num_steps, embed_size)
-        X = X.permute((1, 0, 2))  # (num_steps, batch_size, embed_size)
-        output, state = self.rnn(X)
-        # num_directions = 1 todo 可以试试num_directions=2
-        # output (num_steps, batch_size, num_hiddens * num_directions)
-        # state (num_layers * num_directions, batch_size, num_hiddens)
-        return output, state
-
-
-# encoder = RNNEncoder(vocab_size=10, embed_size=8, num_hiddens=16, num_layers=2)
-# encoder.eval()
-# X = Tensor.zeros((4, 7), dtype=numpy.int32)
-# output, state = encoder(X)
-#
-#
-# print(output.shape)
+        # (seq_len, batch_size, embed_size)
+        # embedded = self.dropout(self.embedding(input_seq))
+        embedded = self.embedding(input_seq)
+        # outputs (seq_len, batch_size, num_direction * num_hiddens)
+        # hidden  (num_direction * num_layers, batch_size, num_hiddens)
+        outputs, hidden = self.rnn(embedded)
+        if self.rnn.bidirectional:
+            outputs = outputs[:, :, :self.rnn.hidden_size] + outputs[:, :, self.rnn.hidden_size:]
+        # outputs (seq_len, batch_size, num_hiddens)
+        # hidden  (num_direction * num_layers, batch_size, num_hiddens)
+        return outputs, hidden
 
 
-class RNNDecoder(Decoder):
-    def __init__(self, vocab_size, embed_size, num_hiddens, num_layers, dropout=.0, **kwargs):
-        super(RNNDecoder, self).__init__(**kwargs)
-        self.embedding = nn.Embedding(vocab_size, embed_size)
-        # embed_size + num_hiddens 为了处理拼接后的维度，见forward函数中的注释
-        self.rnn = nn.RNN(embed_size + num_hiddens, num_hiddens, num_layers, batch_first=False, dropout=dropout)
+class NMTDecoder(Decoder):
+    def __init__(self, vocab_size, embed_size, num_hiddens, num_layers, dropout):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=0)
+        self.rnn = nn.GRU(input_size=embed_size, hidden_size=num_hiddens, num_layers=num_layers, dropout=dropout)
         # 将隐状态转换为词典大小维度
-        self.dense = nn.Linear(num_hiddens, vocab_size)
+        self.fc_out = nn.Linear(num_hiddens, vocab_size)
         self.vocab_size = vocab_size
+        self.dropout = nn.Dropout(dropout)
 
-    def init_state(self, enc_outputs):
-        return enc_outputs[1]  # 得到编码器输出中的state
-
-    def forward(self, X, state) -> Tuple[Tensor, Tensor]:
-        '''
-
-        Args:
-            X: (batch_size)
-            state:
-
-        Returns:
-
-        '''
-        X = X.unsqueeze(0)  # (1, batch_size)
-        X = self.embedding(X)  # (1, batch_size, embed_size)
-
-        # context 形状 (1, batch_size, num_hiddens )
-        context = state[-1].unsqueeze(0)
-        # 为了每个解码时间步都能看到上下文，拼接context与X
-        # (1, batch_size, embed_size) + (1, batch_size, num_hiddens)
-        #                           => (1, batch_size, embed_size + num_hiddens)
-        concat_context = F.cat((X, context), 2)
-
-        output, state = self.rnn(concat_context, state)
-
-        output = F.softmax(self.dense(output.squeeze(0)), axis=1)
-
-        return output, state
+    def forward(self, input_seq, hidden) -> Tuple[Tensor, Tensor]:
+        input_seq = input_seq.unsqueeze(0)
+        # input = (1, batch_size)
+        # embedded = self.dropout(self.embedding(input_seq))
+        embedded = self.embedding(input_seq)
+        # embedded = (1, batch_size, embed_size)
+        output, hidden = self.rnn(embedded, hidden)
+        #
+        prediction = self.fc_out(output.squeeze(0))
+        return prediction, hidden
 
 
-# decoder = RNNDecoder(vocab_size=10, embed_size=8, num_hiddens=16, num_layers=2)
-# decoder.eval()
-# state = decoder.init_state(encoder(X))
-# output, state = decoder(X, state)
-# print(output.shape, state.shape)
-
-
-class Seq2Seq(nn.Module):
-    '''合并编码器和解码器'''
-
+class NMTModel(nn.Module):
     def __init__(self, encoder, decoder, device):
-        super(Seq2Seq, self).__init__()
+        super().__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.device = device
 
-    def forward(self, src, tgt, tf_ratio=0.5) -> Tensor:
+    def forward(self, input_seq, target_seq, teacher_forcing_ratio=1) -> Tensor:
         '''
 
         Args:
-            src: (batch_size, num_steps)
-            tgt: (batch_size, num_steps)
-            tf_ratio: teacher forcing 阈值
-
+            input_seq: (seq_len, batch_size)
+            target_seq: (seq_len, batch_size)
+            teacher_forcing_ratio: 强制教学比率
         Returns:
 
         '''
-        enc_outputs = self.encoder(src)
-        hidden = self.decoder.init_state(enc_outputs)  # (num_layers  * num_directions, batch_size, num_hiddens)
-
-        batch_size, num_steps = tgt.shape
+        max_len, batch_size = target_seq.shape
+        # tgt_vocab_size = self.decoder.vocab_size
 
         outputs = []
-
-        inp = Tensor([tgt_vocab[BOS_TOKEN]] * batch_size, device=self.device)  # bos
-        for t in range(1, num_steps):
-            output, hidden = self.decoder(inp, hidden)
-
+        # hidden  (num_direction * num_layers, batch_size, num_hiddens)
+        _, hidden = self.encoder(input_seq)
+        # decoder_input (1, batch_size)
+        decoder_input = target_seq[0, :]
+        # 确保tgt[t]看到的是下一个label
+        for t in range(1, max_len):
+            output, hidden = self.decoder(decoder_input, hidden)
             outputs.append(output)
-            tf = random.random() < tf_ratio
-            pred = output.argmax(axis=1)
-            inp = tgt[:, t] if tf else pred
+            teacher_force = random.random() < teacher_forcing_ratio
+            top1 = output.argmax(1)
+            decoder_input = target_seq[t] if teacher_force else top1
 
-        outputs = F.stack(outputs, axis=0)
-        return outputs
-
-
-def nll_mask_loss(inp, target, mask):
-    num_total = mask.sum()
-    ce_loss = -inp.gather(1, target.view(-1, 1)).squeeze(1).log()
-    loss = F.masked_select(ce_loss, mask).sum() / len(ce_loss)
-    return loss, num_total.item()
+        return F.stack(outputs)
 
 
-def batch_2_train(batch, padding_value):
-    input_batch, output_batch = batch
+def train_epoch(model, data_iter, optimizer, criterion, clip, device, tf_ratio):
+    model.train()
+    epoch_loss = 0
 
-    mask = output_batch != padding_value
+    for batch in data_iter:
+        optimizer.zero_grad()
+        inputs, targets = [x.to(device).T for x in batch]
+        outputs = model(inputs, targets, tf_ratio)
 
-    return input_batch, output_batch, mask
+        outputs = outputs.view(-1, outputs.shape[2])
+        targets = targets[1:].view(-1)
 
+        loss = criterion(outputs, targets)
+        loss.backward()
+        with no_grad():
+            # 梯度裁剪
+            grad_clipping(model, clip)
+        optimizer.step()
 
-def dataloader_stream(padding_value, dataloader):
-    while True:
-        # 每次重新构造一个迭代器，保证一直会有数据
-        it = iter(dataloader)
-        batch = next(it)
-        yield batch_2_train(batch, padding_value)
+        epoch_loss += loss.item()
 
-
-def train(input, target, mask, encoder, decoder, encoder_optimizer, decoder_optimizer,
-          device, tgt_vocab, teacher_forcing_ratio):
-    """
-    在单个批次上的训练
-    Returns:
-
-    """
-    encoder_optimizer.zero_grad()
-    decoder_optimizer.zero_grad()
-    input, target, mask = input.to(device), target.to(device), mask.to(device)
-
-    print_losses = []
-
-    num_totals = 0  # 单词数
-
-    loss = 0
-
-    enc_outputs = encoder(input)
-
-    hidden = decoder.init_state(enc_outputs)
-
-    batch_size, num_steps = target.shape
-
-    # 创建初始的解码器输入，初始时输入BOS_TOKEN
-    inp = Tensor([tgt_vocab[BOS_TOKEN]] * batch_size, device=device)  # bos
-
-    # 是否开启teacher forcing; 若开启，则用真实输出来预测下一个输出，否则用预测的输出来预测下一个输出。
-    use_tf = True if random.random() < teacher_forcing_ratio else False
-
-    if use_tf:
-        for t in range(num_steps):  # 最多生成num_steps
-            output, hidden = decoder(inp, hidden)
-            # 使用目标单词作为下一个输入
-            inp = target[:, t]
-            mask_loss, num_total = nll_mask_loss(output, target[:, t], mask[:, t])
-            loss += mask_loss
-
-            print_losses.append(mask_loss.item() * num_total)
-
-            num_totals += num_total
-    else:
-        for t in range(num_steps):
-            output, hidden = decoder(inp, hidden)
-            inp = output.argmax(axis=1)
-
-            mask_loss, num_total = nll_mask_loss(output, target[:, t], mask[:, t])
-
-            loss += mask_loss
-            print_losses.append(mask_loss.item() * num_total)
-            num_totals += num_total
-
-    loss.backward()
-
-    encoder_optimizer.step()
-    decoder_optimizer.step()
-
-    return sum(print_losses) / num_totals
+    return epoch_loss
 
 
-def train_seq2seq(encoder, decoder, data_iter, lr, n_iteration, tgt_vocab, device, teacher_forcing_ratio, print_every):
-    """训练序列到序列模型"""
-
-    encoder.train()
-    decoder.train()
-
-    encoder_optimizer = Adam(encoder.parameters(), lr=lr)
-    decoder_optimizer = Adam(decoder.parameters(), lr=lr)
-
-    print_loss = 0
-
-    print('Beginning Training...')
-
-    # animator = Animator(xlabel='epoch', ylabel='loss', xlim=[10, num_epochs])
-
-    PAD_IDX = tgt_vocab[PAD_TOKEN]
-
-    for iteration in tqdm(range(1, n_iteration + 1)):
-        input_batch, output_batch, mask = next(dataloader_stream(PAD_IDX, data_iter))
-
-        loss = train(input_batch, output_batch, mask, encoder, decoder, encoder_optimizer, decoder_optimizer, device,
-                     tgt_vocab, teacher_forcing_ratio)
-
-        print_loss += loss
-
-        # 打印训练信息
-        if iteration % print_every == 0:
-            print_loss_avg = print_loss / print_every
-
-            print(
-                f"(Iteration: {iteration}/{n_iteration} {iteration / n_iteration * 100 :.1f}% "
-                f"Loss: {print_loss_avg:.4f})")
-            print_loss = 0
-
-
-def predict_seq2seq(encoder, decoder, data_iter, src_vocab, tgt_vocab, num_steps, device):
-    encoder.eval()
-    decoder.eval()
-
-    output = []
+def evaluate(model, data_iter, criterion, device):
+    model.eval()
+    epoch_loss = 0
     with no_grad():
         for batch in data_iter:
-            output_seq = []
+            inputs, targets = [x.to(device).T for x in batch]
+            outputs = model(inputs, targets, 0)  # 评估时不用teacher forcing
 
-            X, Y = [x.to(device) for x in batch]
+            outputs = outputs.view(-1, outputs.shape[2])
+            targets = targets[1:].view(-1)
 
-            enc_outputs = encoder(X)
-            hidden = decoder.init_state(enc_outputs)  # (num_layers  * num_directions, batch_size, num_hiddens)
+            loss = criterion(outputs, targets)
+            epoch_loss += loss.item()
 
-            inp = Tensor([tgt_vocab[BOS_TOKEN]], device=device)
-            for t in range(1, num_steps):
-                hat_y, hidden = decoder(inp, hidden)
+    return epoch_loss
 
-                inp = hat_y.argmax(axis=1)
-                pred = inp.squeeze(axis=0).item()
 
-                if pred == tgt_vocab['<eos>']:
-                    break
-                output_seq.append(pred)
+def translate(model, src_sentence, src_vocab, tgt_vocab, max_len, device):
+    """翻译一句话"""
+    # 在预测时设置为评估模式
+    model.eval()
+    if isinstance(src_sentence, str):
+        src_sentence = process_nmt(src_sentence)
+        src_tokens = [src_vocab[BOS_TOKEN]] + [src_sentence.split(' ')] + [src_vocab[EOS_TOKEN]]
+    else:
+        src_tokens = [src_vocab[BOS_TOKEN]] + src_vocab[src_sentence] + [src_vocab[EOS_TOKEN]]
 
-            output.append(
-                f" {' '.join(src_vocab.token(X.squeeze().data.tolist()))} => {''.join(tgt_vocab.token(output_seq))}")
+    src_tokens = truncate_pad(src_tokens, max_len, src_vocab[PAD_TOKEN])
+    # 添加批量轴
+    src_tensor = Tensor(src_tokens, dtype=int, device=device).unsqueeze(1)
+    with no_grad():
+        encoder_outputs, hidden = model.encoder(src_tensor)
 
-    return output
+    trg_indexes = [tgt_vocab[BOS_TOKEN]]
+    for _ in range(max_len):
+        trg_tensor = Tensor([trg_indexes[-1]], dtype=int, device=device)
+
+        with no_grad():
+            output, hidden = model.decoder(trg_tensor, hidden)
+        # 我们使用具有预测最高可能性的词元，作为解码器在下一时间步的输入
+        pred_token = output.argmax(1).item()
+        # 一旦序列结束词元被预测，输出序列的生成就完成了
+        if pred_token == tgt_vocab[EOS_TOKEN]:
+            break
+        trg_indexes.append(pred_token)
+
+    return tgt_vocab.to_tokens(trg_indexes)[1:]
+
+
+def cal_bleu_score(net, data_path, src_vocab, tgt_vocab, seq_len, device):
+    net.eval()
+    raw_text = cht_to_chs(read_nmt(data_path))
+
+    srcs, tgts = tokenize_nmt(process_nmt(raw_text))
+    predicts = []
+    labels = []
+
+    for src, tgt in zip(srcs, tgts):
+        predict = translate(net, src, src_vocab, tgt_vocab, seq_len, device)
+        predicts.append(predict)
+        labels.append([tgt])  # 因为reference可以有多条，所以是一个列表
+        print(f"{tgt} → {predict}")
+
+    return bleu_score(predicts, labels)
+
+
+def init_weights(model):
+    for name, param in model.named_parameters():
+        init.uniform_(param, -0.08, 0.08)
 
 
 # 参数定义
-embed_size = 512
+embed_size = 256
 num_hiddens = 512
-num_layers = 4
-dropout = 0.15
+num_layers = 2
+dropout = 0.5
 
 batch_size = 64
-num_steps = 20
+max_len = 50
 
-lr = 0.0001
-n_iters = 10000
+lr = 0.001
+num_epochs = 100
 min_freq = 1
+clip = 2.0
 
-print_every = 100
+tf_ratio = 1 # teacher force ratio
 
-teacher_forcing_ratio = 0.5
+print_every = 1
 
 device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
 
-# 加载数据集
-train_iter, src_vocab, tgt_vocab = load_dataset_nmt('../data/en-cn/train.txt', batch_size=batch_size,
-                                                    min_freq=min_freq, max_len=num_steps)
+# 加载训练集
+train_iter, src_vocab, tgt_vocab = load_dataset_nmt('../data/en-cn/train_mini.txt', batch_size=batch_size,
+                                                    min_freq=min_freq)
+
+# 加载验证集
+valid_iter, src_vocab, tgt_vocab = load_dataset_nmt('../data/en-cn/dev_mini.txt', batch_size=batch_size,
+                                                    min_freq=min_freq, src_vocab=src_vocab, tgt_vocab=tgt_vocab)
 
 # 构建编码器
-encoder = RNNEncoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropout)
+encoder = NMTEncoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropout)
 # 构建解码器
-decoder = RNNDecoder(len(tgt_vocab), embed_size, num_hiddens, num_layers, dropout)
+decoder = NMTDecoder(len(tgt_vocab), embed_size, num_hiddens, num_layers, dropout)
 
-encoder.to(device)
-decoder.to(device)
+model = NMTModel(encoder, decoder, device)
+# model.apply(init_weights)
+model.to(device)
 
-# 训练
-train_seq2seq(encoder, decoder, train_iter, lr, n_iters, tgt_vocab, device, teacher_forcing_ratio, print_every)
+optimizer = Adam(model.parameters())
+criterion = CrossEntropyLoss(ignore_index=tgt_vocab[PAD_TOKEN])
 
-test_iter, _, _ = load_dataset_nmt('../data/en-cn/test_mini.txt', batch_size=1, min_freq=min_freq, max_len=num_steps,
-                                   src_vocab=src_vocab, tgt_vocab=tgt_vocab, shuffle=False)
 
-output = predict_seq2seq(encoder, decoder, test_iter, src_vocab, tgt_vocab, num_steps=num_steps, device=device)
-encoder.save("encoder.pt")
-decoder.save("decoder.pt")
-print(output)
+def train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip, device, tf_ratio):
+    best_valid_loss = float('inf')
+    for epoch in tqdm(range(1, num_epochs + 1),  desc="Training", leave=False):
+        train_loss = train_epoch(model, train_iter, optimizer, criterion, clip, device, tf_ratio)
+        valid_loss = evaluate(model, valid_iter, criterion, device)
+        #if valid_loss < best_valid_loss:
+        #    best_valid_loss = valid_loss
+        #    model.save("nmt.pt")
+        tqdm.write(f"epoch {epoch:3d} , train loss: {train_loss:.4f} , validate loss: {valid_loss:.4f}")
+
+# with debug_mode():
+train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip, device, tf_ratio)
+model.save("nmt.pt")
+
+model = model.load("nmt.pt")
+print(model)
+model.to(device)
+
+import time
+
+start = time.time()
+
+score = cal_bleu_score(model, '../data/en-cn/train_mini.txt', src_vocab, tgt_vocab, max_len, device)
+print(f"cost: {time.time() - start}")
+print(f"bleu score: {score * 100:.2f}")
+# 简单 单层 1.2
+# 参数更多 单层 GRU 4.09
+# 单层 GRU 逆序 2.13
+
+# while True:
+#    sentence = input("英文: ")
+#    chinese, _ = inference(model, sentence, src_vocab, tgt_vocab, 20, device)
+#    print(chinese)

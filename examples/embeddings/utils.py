@@ -10,6 +10,26 @@ UNK_TOKEN = "<unk>"  # 未知词标记
 WEIGHT_INIT_RANGE = 0.1
 
 
+def load_corpus(corpus_path, min_freq=2):
+    '''
+    从corpus_path中读取预料
+    :param corpus_path: 处理好的文本路径
+    :return:
+    '''
+    with open(corpus_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    # 去掉空行，将文本转换为单词列表
+    # 去掉换行符
+    text = [[word.strip() for word in sentence.split(' ')] for sentence in lines if len(sentence) != 0]
+    # 构建词典
+    vocab = Vocabulary.build(text, min_freq=min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
+    print(f'vocab size:{len(vocab)}')
+    # 构建语料:将单词转换为ID
+    corpus = [vocab.to_ids(sentence) for sentence in text]
+
+    return corpus, vocab
+
+
 class Vocabulary:
     def __init__(self, tokens=None):
         self._idx_to_token = list()
@@ -81,26 +101,6 @@ class Vocabulary:
         with open(path, 'r') as f:
             tokens = f.read().split('\n')
         return cls(tokens)
-
-
-def load_corpus(corpus_path, min_freq=2):
-    '''
-    从corpus_path中读取预料
-    :param corpus_path: 处理好的文本路径
-    :return:
-    '''
-    with open(corpus_path, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-    # 去掉空行，将文本转换为单词列表
-    # 去掉换行符
-    text = [[word.strip() for word in sentence.split(' ')] for sentence in lines if len(sentence) != 0]
-    # 构建词典
-    vocab = Vocabulary.build(text, min_freq=min_freq, reserved_tokens=[PAD_TOKEN, BOS_TOKEN, EOS_TOKEN])
-    print(f'vocab size:{len(vocab)}')
-    # 构建语料:将单词转换为ID
-    corpus = [vocab.to_ids(sentence) for sentence in text]
-
-    return corpus, vocab
 
 
 def save_pretrained(vocab, embeddings, save_path):
