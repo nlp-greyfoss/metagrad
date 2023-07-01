@@ -26,7 +26,7 @@ class NMTEncoder(Encoder):
         # 基于双向GRU实现
         self.rnn = nn.GRU(input_size=embed_size, hidden_size=num_hiddens, num_layers=num_layers, dropout=dropout,
                           bidirectional=bidirectional)
-        #self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, input_seq):
         '''
@@ -60,8 +60,8 @@ class NMTDecoder(Decoder):
     def forward(self, input_seq, hidden) -> Tuple[Tensor, Tensor]:
         input_seq = input_seq.unsqueeze(0)
         # input = (1, batch_size)
-        # embedded = self.dropout(self.embedding(input_seq))
-        embedded = self.embedding(input_seq)
+        embedded = self.dropout(self.embedding(input_seq))
+        # embedded = self.embedding(input_seq)
         # embedded = (1, batch_size, embed_size)
         output, hidden = self.rnn(embedded, hidden)
         #
@@ -206,19 +206,19 @@ num_hiddens = 512
 num_layers = 2
 dropout = 0.5
 
-batch_size = 64
-max_len = 50
+batch_size = 128
+max_len = 40
 
 lr = 0.001
 num_epochs = 100
 min_freq = 1
-clip = 2.0
+clip = 1.0
 
-tf_ratio = 1 # teacher force ratio
+tf_ratio = 0.5 # teacher force ratio
 
 print_every = 1
 
-device = cuda.get_device("cuda:0" if cuda.is_available() else "cpu")
+device = cuda.get_device("cuda" if cuda.is_available() else "cpu")
 
 # 加载训练集
 train_iter, src_vocab, tgt_vocab = load_dataset_nmt('../data/en-cn/train_mini.txt', batch_size=batch_size,
@@ -234,7 +234,7 @@ encoder = NMTEncoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropou
 decoder = NMTDecoder(len(tgt_vocab), embed_size, num_hiddens, num_layers, dropout)
 
 model = NMTModel(encoder, decoder, device)
-# model.apply(init_weights)
+model.apply(init_weights)
 model.to(device)
 
 optimizer = Adam(model.parameters())
@@ -253,9 +253,9 @@ def train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip,
 
 # with debug_mode():
 train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip, device, tf_ratio)
-model.save("nmt.pt")
 
-model = model.load("nmt.pt")
+
+#model = model.load("nmt.pt")
 print(model)
 model.to(device)
 
@@ -269,6 +269,8 @@ print(f"bleu score: {score * 100:.2f}")
 # 简单 单层 1.2
 # 参数更多 单层 GRU 4.09
 # 单层 GRU 逆序 2.13
+
+model.save("nmt.pt")
 
 # while True:
 #    sentence = input("英文: ")

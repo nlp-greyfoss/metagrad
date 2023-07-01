@@ -52,7 +52,9 @@ coverage.xml
 .pytest_cache/
 
 *.pt
+*.npz
 *.vec
+*.pkl
 
 # image in examples
 examples/**/*.png
