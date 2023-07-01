@@ -1,4 +1,3 @@
-import copy
 import math
 import operator
 import pickle
@@ -8,7 +7,6 @@ from typing import List, Optional, Tuple, Dict, Iterable, Union, Iterator, Set
 
 import metagrad.functions as F
 from metagrad import init
-from metagrad.cuda import GpuDevice
 from metagrad.paramater import Parameter
 from metagrad.tensor import Tensor, no_grad, float_type
 
@@ -156,15 +154,44 @@ class Module:
         """
         return self.train(False)
 
-    def save(self, path='model.pt'):
-        self.to_cpu()
-        with open(path, 'wb') as f:
-            # print(f'Saving {self} to {path}')
-            pickle.dump(self, f)
+    def state_dict(self, destination=None, prefix=""):
+        if destination is None:
+            destination = OrderedDict()
 
-    def load(self, path='model.pt'):
+        for name, param in self._parameters.items():
+            if param is not None:
+                destination[prefix + name] = param.data
+        for name, module in self._modules.items():
+            if module is not None:
+                module.state_dict(destination, prefix + name + ".")
+
+        return destination
+
+    def load_state_dict(self, state_dict):
+        own_state = self.state_dict()
+        for name, param in state_dict.items():
+            if name not in own_state:
+                raise KeyError(f'unexpected key "{name}" in state_dict')
+
+            if isinstance(param, Parameter):
+                param = param.data
+
+            own_state[name] = param
+
+        missing = set(own_state.keys()) - set(state_dict.keys())
+        if len(missing) > 0:
+            raise KeyError(f'missing keys in state_dict: "{missing}"')
+
+    def save(self, path='model.pkl'):
+        state_dict = self.state_dict()
+        with open(path, 'wb') as f:
+            pickle.dump(state_dict, f)
+            print(f"Save module to {path}")
+
+    def load(self, path='model.pkl'):
         with open(path, 'rb') as f:
-            return pickle.load(f)
+            state_dict = pickle.load(f)
+        self.load_state_dict(state_dict)
 
     def _apply(self, fn):
         for module in self.children():
@@ -748,7 +775,7 @@ class RNNBase(Module):
             hx = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), device=input.device)
 
             if self.mode == 'LSTM':
-                hx = (hx, hx) # 如果是LSTM，同时初始化隐藏状态h，与单元状态c
+                hx = (hx, hx)  # 如果是LSTM，同时初始化隐藏状态h，与单元状态c
 
         func = F.RNN(
             self.mode,
