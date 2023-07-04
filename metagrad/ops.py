@@ -22,8 +22,6 @@ def unbroadcast(grad: NdArray, in_shape: Tuple) -> NdArray:
     '''
     # 首先计算维度个数之差
     ndims_added = grad.ndim - len(in_shape)
-    if ndims_added == 0:
-        return grad
     # 由于广播时，先从左边插入，再进行复制，所以逆操作时，也从左边开始，进行复制的逆操作（求和）
     for _ in range(ndims_added):
         # 在axis=0上进行求和，去掉第0个维度，如果ndims_added > 1，就需要不停的在第0个维度上面求和
