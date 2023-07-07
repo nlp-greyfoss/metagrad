@@ -226,8 +226,7 @@ class Attention(nn.Module):
         Args:
             enc_hid_dim: 编码器的隐藏层大小
             dec_hid_dim: 解码器的隐藏层大小
-            method:  dot | scaled_dot | general
-
+            method:  dot | scaled_dot | general | bahdanau | concat
         Returns:
 
         """
