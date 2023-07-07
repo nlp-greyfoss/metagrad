@@ -14,6 +14,8 @@ from metagrad.dataloader import DataLoader
 from metagrad.dataset import TensorDataset
 from metagrad.loss import CrossEntropyLoss
 from metagrad.optim import Adam
+from metagrad.metrics import bleu_score
+
 from metagrad.tensor import no_grad
 from metagrad.utils import grad_clipping
 
@@ -330,6 +332,10 @@ class Attention(nn.Module):
 
         return attention_weight, context
 
+    def __repr__(self):
+
+        return f"Attention(self.method={self.method}, encoder_hidden_size={self.encoder_hidden_size}, decoder_hidden_size={self.decoder_hidden_size})"
+
 
 class Encoder(nn.Module):
     def __init__(self, vocab_size: int, embed_size: int, num_hiddens: int, num_layers: int, dropout: float) -> None:
@@ -373,10 +379,8 @@ class Encoder(nn.Module):
         # 编码器初始隐藏状态是解码器最后一个前向和反向 RNN
         # 编码器的RNN喂给一个线性层来融合
         hidden = F.tanh(self.fc(F.cat((hidden[-2, :, :], hidden[-1, :, :]), axis=1)))
-        # outputs = (seq_len, batch_size,  num_hiddens)
-        outputs = outputs[:, :, :num_hiddens] + outputs[:, :, :num_hiddens]
-
-        # outputs (seq_len, batch_size,  num_hiddens)
+        # 这里是双向的，所以是 2 * num_hiddens
+        # outputs (seq_len, batch_size,  2 * num_hiddens)
         # hidden  (batch_size, num_hiddens)
         return outputs, hidden
 
@@ -395,8 +399,8 @@ class Decoder(nn.Module):
         """
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=0)
-        #
-        self.rnn = nn.GRU(input_size=embed_size + num_hiddens, hidden_size=num_hiddens, num_layers=num_layers,
+        # Encoder是双向的
+        self.rnn = nn.GRU(input_size=embed_size + num_hiddens * 2, hidden_size=num_hiddens, num_layers=num_layers,
                           dropout=dropout)
         # 将隐状态转换为词典大小维度
         self.fc_out = nn.Linear(num_hiddens, vocab_size)
@@ -404,7 +408,7 @@ class Decoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.attention = attention
 
-    def forward(self, input_seq: Tensor, hidden: Tensor, encoder_outputs: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input_seq: Tensor, hidden: Tensor, encoder_outputs: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """
         解码器的前向算法
         :param input_seq: 初始输入，这里为<bos> 形状 (batch_size, )
@@ -486,59 +490,6 @@ def init_weights(model):
         init.uniform_(param, -0.08, 0.08)
 
 
-# 参数定义
-embed_size = 256
-num_hiddens = 512
-num_layers = 1
-dropout = 0.5
-
-batch_size = 16
-max_len = 40
-
-lr = 0.001
-num_epochs = 10
-min_freq = 2
-clip = 1.0
-
-tf_ratio = 0.5  # teacher force ratio
-
-print_every = 1
-
-device = cuda.get_device("cuda" if cuda.is_available() else "cpu")
-
-# 加载训练集
-train_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_type="train", batch_size=batch_size,
-                                                    min_freq=min_freq, shuffle=True)
-
-# 加载验证集
-valid_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_type="val", batch_size=batch_size,
-                                                    min_freq=min_freq, src_vocab=src_vocab, tgt_vocab=tgt_vocab)
-
-# 加载测试集
-test_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_type="test", batch_size=batch_size,
-                                                   min_freq=min_freq, src_vocab=src_vocab, tgt_vocab=tgt_vocab)
-
-# 构建Attention
-attention = Attention()
-# 构建编码器
-encoder = Encoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropout)
-# 构建解码器
-decoder = Decoder(len(tgt_vocab), embed_size, num_hiddens, num_layers, dropout, attention)
-
-model = Seq2seq(encoder, decoder)
-model.apply(init_weights)
-model.to(device)
-
-print(model)
-
-TGT_PAD_IDX = tgt_vocab[Vocabulary.PAD_TOKEN]
-
-print(f"TGT_PAD_IDX is {TGT_PAD_IDX}")
-
-optimizer = Adam(model.parameters())
-criterion = CrossEntropyLoss(ignore_index=TGT_PAD_IDX)
-
-
 def train_epoch(model, data_iter, optimizer, criterion, clip, device, tf_ratio):
     model.train()
     epoch_loss = 0
@@ -591,6 +542,59 @@ def train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip,
         tqdm.write(
             f"epoch {epoch:3d} , train loss: {train_loss:.4f} , validate loss: {valid_loss:.4f}, best validate loss: {best_valid_loss:.4f}")
 
+
+# 参数定义
+embed_size = 64
+num_hiddens = 64
+num_layers = 1
+dropout = 0.5
+
+batch_size = 16
+max_len = 40
+
+lr = 0.001
+num_epochs = 10
+min_freq = 2
+clip = 1.0
+
+tf_ratio = 0.5  # teacher force ratio
+
+print_every = 1
+
+device = cuda.get_device("cuda" if cuda.is_available() else "cpu")
+
+# 加载训练集
+train_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_type="train", batch_size=batch_size,
+                                                    min_freq=min_freq, shuffle=True)
+
+# 加载验证集
+valid_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_type="val", batch_size=batch_size,
+                                                    min_freq=min_freq, src_vocab=src_vocab, tgt_vocab=tgt_vocab)
+
+# 加载测试集
+test_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_type="test", batch_size=batch_size,
+                                                   min_freq=min_freq, src_vocab=src_vocab, tgt_vocab=tgt_vocab)
+
+# 构建Attention
+# 编码器是双向的
+attention = Attention(num_hiddens * 2, num_hiddens, method="bahdanau")
+# 构建编码器
+encoder = Encoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropout)
+# 构建解码器
+decoder = Decoder(len(tgt_vocab), embed_size, num_hiddens, num_layers, dropout, attention)
+
+model = Seq2seq(encoder, decoder)
+model.apply(init_weights)
+model.to(device)
+
+print(model)
+
+TGT_PAD_IDX = tgt_vocab[Vocabulary.PAD_TOKEN]
+
+print(f"TGT_PAD_IDX is {TGT_PAD_IDX}")
+
+optimizer = Adam(model.parameters())
+criterion = CrossEntropyLoss(ignore_index=TGT_PAD_IDX)
 
 train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip, device, tf_ratio)
 test_loss = evaluate(model, test_iter, criterion, device)
