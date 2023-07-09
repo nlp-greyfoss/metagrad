@@ -776,12 +776,12 @@ class Repeat(Function):
         xp = get_array_module(x)
 
         if isinstance(repeats, int):
-            repeats = repeats,
+            repeats = xp.array(repeats,)
         elif isinstance(repeats, Tuple):
             repeats = xp.array(repeats)
 
-        self.save_for_backward(x, np.array(repeats), xp)
-        return xp.tile(x, repeats)
+        self.save_for_backward(x, repeats, xp)
+        return xp.tile(x, repeats.tolist())
 
     def backward(self, grad: NdArray) -> Any:
         x, repeats, xp = self.saved_tensors
@@ -799,7 +799,7 @@ class Repeat(Function):
             if repeat == 1:
                 continue
 
-            grad = sum(xp.array_split(grad, repeat, dim))
+            grad = sum(xp.array_split(grad, repeat.tolist(), dim))
 
         return grad
 

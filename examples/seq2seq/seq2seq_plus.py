@@ -272,26 +272,35 @@ class Decoder(nn.Module):
         """
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=0)
-        self.rnn = nn.GRU(input_size=embed_size, hidden_size=num_hiddens, num_layers=num_layers, dropout=dropout)
+        #
+        self.rnn = nn.GRU(input_size=embed_size + num_hiddens, hidden_size=num_hiddens, num_layers=num_layers,
+                          dropout=dropout)
         # 将隐状态转换为词典大小维度
         self.fc_out = nn.Linear(num_hiddens, vocab_size)
         self.vocab_size = vocab_size
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, input_seq: Tensor, hidden: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input_seq: Tensor, hidden: Tensor, context: Tensor) -> Tuple[Tensor, Tensor]:
         """
         解码器的前向算法
         :param input_seq: 初始输入，这里为<bos> 形状 (batch_size, )
-        :param hidden: 编码器生成的上下文向量 形状 (num_layers, batch_size, num_hiddens)
+        :param hidden: 初始时为编码器生成的上下文向量 形状 (num_layers, batch_size, num_hiddens)，后续为解码器自己产生的
+        :param context: 编码器生成的上下文向量 形状 (num_layers, batch_size, num_hiddens)
         :return:
         """
         # input = (1, batch_size)
         input_seq = input_seq.unsqueeze(0)
         # embedded = (1, batch_size, embed_size)
         embedded = self.dropout(self.embedding(input_seq))
+        # context (1, batch_size, num_hiddens)
+        # 融合多层输出的信息，或者取最后一层的信息，尝试通过使用dropout来融合
+        context = self.dropout(context.sum(0, keepdims=True))
+
+        # embedded_context = (1, batch_size, embed_size + hidden_dim)
+        embedded_context = F.cat((embedded, context), 2)
         # output (1, batch_size, num_hiddens)
         # hidden  (num_layers, batch_size, num_hiddens)
-        output, hidden = self.rnn(embedded, hidden)
+        output, hidden = self.rnn(embedded_context, hidden)
         # prediction (batch_size, vocab_size)
         prediction = self.fc_out(output.squeeze(0))
         return prediction, hidden
@@ -323,13 +332,15 @@ class Seq2seq(nn.Module):
         # 这里我们只关心编码器输出的hidden
         # hidden  (num_layers, batch_size, num_hiddens)
         _, hidden = self.encoder(input_seq)
+        # context 就是编码器生成的上下文向量
+        context = hidden
         # decoder_input (batch_size) 取BOS token
         decoder_input = target_seq[0, :]  # BOS_TOKEN
         # 这里从1开始，确保tgt[t]是下一个token
         for t in range(1, tgt_len):
             # output (batch_size, target_vocab_size)
             # hidden (num_layers, batch_size, num_hiddens)
-            output, hidden = self.decoder(decoder_input, hidden)
+            output, hidden = self.decoder(decoder_input, hidden, context)
             # 保存到outputs
             outputs.append(output)
             # 随机判断是否强制教学
@@ -352,10 +363,10 @@ def init_weights(model):
 # 参数定义
 embed_size = 256
 num_hiddens = 512
-num_layers = 2
+num_layers = 1
 dropout = 0.5
 
-batch_size = 32
+batch_size = 16
 max_len = 40
 
 lr = 0.001
@@ -376,6 +387,10 @@ train_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_ty
 # 加载验证集
 valid_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_type="val", batch_size=batch_size,
                                                     min_freq=min_freq, src_vocab=src_vocab, tgt_vocab=tgt_vocab)
+
+# 加载测试集
+test_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_type="test", batch_size=batch_size,
+                                                   min_freq=min_freq, src_vocab=src_vocab, tgt_vocab=tgt_vocab)
 
 # 构建编码器
 encoder = Encoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropout)
@@ -417,7 +432,7 @@ def train_epoch(model, data_iter, optimizer, criterion, clip, device, tf_ratio):
 
         epoch_loss += loss.item()
 
-    return epoch_loss / len(data_iter)
+    return epoch_loss
 
 
 def evaluate(model, data_iter, criterion, device):
@@ -434,7 +449,7 @@ def evaluate(model, data_iter, criterion, device):
             loss = criterion(outputs, targets)
             epoch_loss += loss.item()
 
-    return epoch_loss / len(data_iter)
+    return epoch_loss
 
 
 def train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip, device, tf_ratio):
@@ -450,3 +465,5 @@ def train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip,
 
 
 train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip, device, tf_ratio)
+test_loss = evaluate(model, test_iter, criterion, device)
+print(f"Test loss: {test_loss:.4f}")
