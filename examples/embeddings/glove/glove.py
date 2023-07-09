@@ -44,7 +44,7 @@ class GloveDataset(Dataset):
         words = Tensor([ex[0] for ex in examples], dtype=np.int)
         contexts = Tensor([ex[1] for ex in examples], dtype=np.int)
         counts = Tensor([ex[2] for ex in examples])
-        return words.int_(), contexts.int_(), counts
+        return words.short(), contexts.short(), counts
 
 
 class GloveModel(nn.Module):

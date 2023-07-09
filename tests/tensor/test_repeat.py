@@ -36,3 +36,21 @@ def test_repeat():
 
     assert np.allclose(mx.grad,
                        tx.grad)
+
+
+def test_repeat_complex():
+    data = np.arange(12).reshape(1, 3, 4)
+    mx = Tensor(data, requires_grad=True)
+    mz = mx.repeat(2, 1, 1)
+
+    tx = torch.tensor(data, dtype=torch.float, requires_grad=True)
+    tz = tx.repeat(2, 1, 1)
+
+    np.allclose(mz.array(), tz.data)
+
+    tz.sum().backward()
+
+    mz.sum().backward()
+
+    assert np.allclose(mx.grad,
+                       tx.grad)

@@ -190,11 +190,23 @@ class Tensor:
         return self.data.dtype
 
     def type(self, dtype):
-        self.data.astype(dtype)
+        self.data = self.data.astype(dtype)
         return self
 
     def float(self):
-        return self.type(np.float)
+        return self.type(np.float32)
+
+    def short(self):
+        return self.type(np.int16)
+
+    def int(self):
+        return self.type(np.int32)
+
+    def long(self):
+        return self.type(np.int64)
+
+    def bool(self):
+        return self.type(np.bool)
 
     @property
     def device(self):
@@ -239,7 +251,7 @@ class Tensor:
         self._grad = self.xp.zeros_like(self.data)
 
     def __repr__(self) -> str:
-        return f"Tensor({self.data}, requires_grad={self.requires_grad}" \
+        return f"Tensor(\n{self.data}, requires_grad={self.requires_grad}" \
                f"{', device:' + self.device.name if isinstance(self.device, GpuDevice) else ''})"
 
     def __len__(self) -> int:
@@ -287,10 +299,6 @@ class Tensor:
 
     def unchain(self):
         self.creator = None
-
-    def int_(self) -> "Tensor":
-        self.data = self.data.astype(np.int16)
-        return self
 
     def float_(self) -> "Tensor":
         self.data = self.data.astype(float_type)
