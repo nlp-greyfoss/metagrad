@@ -1,10 +1,10 @@
 import weakref
 from typing import Any, Tuple, Union
+
 import numpy as np
 
 from metagrad import cuda
 from metagrad.cuda import get_array_module, ndarray
-
 from metagrad.tensor import Tensor, NdArray, Config
 
 '''
@@ -229,7 +229,6 @@ class Mul(Function):
         xp, x, y = self.saved_tensors
         # 分别返回∂L/∂x 和 ∂L/∂y
         return unbroadcast(xp.multiply(grad, y), x.shape), unbroadcast(xp.multiply(grad, x), y.shape)
-
 
 
 def mul(self, rhs):
@@ -662,6 +661,7 @@ class Slice(Function):
 
         return bigger_grad
 
+
 # class SetItem(Function):
 #     def forward(self, x: NdArray, slices: Any, value: NdArray) -> NdArray:
 #         xp = get_array_module(x)
@@ -688,9 +688,9 @@ class _IndexSelect(Function):
     def fwd(self, x: NdArray, xp, axis):
         raise NotImplementedError("You must implement the fwd function in sub class.")
 
-    def forward(self, x: NdArray, axis=None) -> NdArray:
+    def forward(self, x: NdArray, axis=None, *args) -> NdArray:
         xp = get_array_module(x)
-        return self.fwd(x, xp, axis)
+        return self.fwd(x, xp, axis, *args)
 
     def backward(self, grad: NdArray) -> NdArray:
         return None
@@ -704,6 +704,34 @@ class ArgMax(_IndexSelect):
 class ArgMin(_IndexSelect):
     def fwd(self, x: NdArray, xp, axis=None):
         return xp.argmin(x, axis=axis)
+
+
+class Sort(Function):
+    def forward(self, x: NdArray, axis=-1, descending=False) -> Tuple[NdArray, NdArray]:
+        xp = get_array_module(x)
+        # 在指定维度上对数组进行排序
+
+        # sorted_x = xp.sort(x, axis=axis)
+        sorted_indices = xp.argsort(x, axis=axis)
+        sorted_x = xp.take_along_axis(x, sorted_indices, axis=axis)
+
+        if descending:
+            # 如果设置了descending为True，则按降序排序
+            sorted_x = xp.flip(sorted_x, axis=axis)
+            sorted_indices = xp.flip(sorted_indices, axis=axis)
+
+        self.save_for_backward(axis, xp, sorted_indices)
+
+        return sorted_x, sorted_indices
+
+    def backward(self, *grad: NdArray) -> NdArray:
+        axis, xp, indices = self.saved_tensors
+        # forward返回了多个，只有非索引才有梯度
+        grad = grad[0]
+        # 逆转排序后的索引
+        inverse_permutation = xp.argsort(indices, axis=axis)
+
+        return xp.take_along_axis(grad, inverse_permutation, axis=axis)
 
 
 class Reshape(Function):

@@ -1,6 +1,6 @@
-import metagrad.functions as F
-from metagrad.tensor import Tensor, debug_mode, cuda
 import numpy as np
+
+from metagrad.tensor import Tensor
 
 
 def test_get_by_index():
@@ -75,3 +75,4 @@ def test_integer_indexing():
                                [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                                [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]]
+
