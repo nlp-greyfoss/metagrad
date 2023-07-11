@@ -627,7 +627,7 @@ test_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_typ
 
 # 构建Attention
 # 编码器是双向的
-attention = Attention(num_hiddens * 2, num_hiddens, method="bahdanau")
+attention = Attention(num_hiddens, num_hiddens, method="scaled_dot")
 # 构建编码器
 encoder = Encoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropout)
 # 构建解码器
