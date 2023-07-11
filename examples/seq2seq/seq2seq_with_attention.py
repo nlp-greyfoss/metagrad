@@ -647,6 +647,11 @@ optimizer = Adam(model.parameters())
 criterion = CrossEntropyLoss(ignore_index=TGT_PAD_IDX)
 
 train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip, device, tf_ratio)
+
+# 加载valid loss最小的模型
+model.load()
+model.to(device)
+
 test_loss = evaluate(model, test_iter, criterion, device)
 print(f"Test loss: {test_loss:.4f}")
 bleu_score = cal_bleu_score(model, base_path, src_vocab, tgt_vocab, max_len, device)

@@ -29,8 +29,8 @@ def bleu_score2(pred_seq, label_seq, k=4):
     return score
 
 
-def bleu_score(candidate_corpus: List[str], references_corpus: List[str], max_n: int = 4,
-               weights: list[float] = [0.25] * 4) -> float:
+def bleu_score(candidate_corpus, references_corpus, max_n: int = 4,
+               weights=[0.25] * 4) -> float:
     clipped_counts = np.zeros(max_n)
     total_counts = np.zeros(max_n)
     weights = np.array(weights)
