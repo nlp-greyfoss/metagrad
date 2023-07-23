@@ -1,6 +1,7 @@
 import metagrad.module as nn
 from metagrad.tensor import Tensor
-from metagrad.utils import pack_padded_sequence, pad_packed_sequence, pad_sequence
+from metagrad.rnn_utils import pack_padded_sequence, pad_packed_sequence
+from metagrad.utils import pad_sequence
 
 
 def test_pack_padded_sequence():
@@ -28,10 +29,15 @@ def test_pack_padded_sequence():
     print(embedded_seq)  # (batch_size, seq_len, embed_size)
 
     result = pack_padded_sequence(embedded_seq, sorted_lengths.tolist(), batch_first=True)
-    print(result)
-    print(result.data.shape)
-    print(result.batch_sizes)
-    output, input_sizes = pad_packed_sequence(result, batch_first=True)
+
+    rnn = nn.RNN(input_size=3, hidden_size=4, batch_first=True, bidirectional=True)
+
+    out, _ = rnn(result)
+
+    print(out)
+    print(out.data.shape)
+    print(out.batch_sizes)
+    output, input_sizes = pad_packed_sequence(out, batch_first=True)
 
     print(output.shape)
     print(input_sizes)
