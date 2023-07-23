@@ -168,20 +168,31 @@ class Module:
 
         return destination
 
+    def _load_from_state_dict(self, state_dict, prefix):
+        local_name_params = self._parameters.items()
+        local_state = {k: v for k, v in local_name_params if v is not None}
+
+        for name, param in local_state.items():
+            key = prefix + name
+            if key in state_dict:
+                input_param = state_dict[key]
+                with no_grad():
+                    # 赋值给param
+                    param.data = input_param
+
     def load_state_dict(self, state_dict):
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            if name not in own_state:
-                raise KeyError(f'unexpected key "{name}" in state_dict')
+        state_dict = OrderedDict(state_dict)
 
-            if isinstance(param, Parameter):
-                param = param.data
+        def load(module, local_state_dict, prefix=""):
+            module._load_from_state_dict(local_state_dict, prefix)
+            for name, child in module._modules.items():
+                if child is not None:
+                    child_prefix = prefix + name + '.'
+                    child_state_dict = {k: v for k, v in local_state_dict.items() if k.startswith(child_prefix)}
+                    load(child, child_state_dict, child_prefix)
 
-            own_state[name] = param
-
-        missing = set(own_state.keys()) - set(state_dict.keys())
-        if len(missing) > 0:
-            raise KeyError(f'missing keys in state_dict: "{missing}"')
+        load(self, state_dict)
+        del load
 
     def save(self, path='model.pkl'):
         state_dict = self.state_dict()
@@ -272,6 +283,13 @@ class Module:
                 modules[name] = value
             else:
                 super().__setattr__(name, value)
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    def __getstate(self):
+        state = self.__dict__.copy()
+        return state
 
     def __getattr__(self, name: str) -> Union[Tensor, 'Module']:
         if '_parameters' in self.__dict__:

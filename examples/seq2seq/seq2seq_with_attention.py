@@ -379,8 +379,10 @@ class Encoder(nn.Module):
         # 编码器初始隐藏状态是解码器最后一个前向和反向 RNN
         # 编码器的RNN喂给一个线性层来融合
         hidden = F.tanh(self.fc(F.cat((hidden[-2, :, :], hidden[-1, :, :]), axis=1)))
-        # 这里是双向的，所以是 2 * num_hiddens
-        # outputs (seq_len, batch_size,  2 * num_hiddens)
+        # outputs = (seq_len, batch_size,  num_hiddens)
+        outputs = outputs[:, :, :num_hiddens] + outputs[:, :, :num_hiddens]
+
+        # outputs (seq_len, batch_size,  num_hiddens)
         # hidden  (batch_size, num_hiddens)
         return outputs, hidden
 
@@ -399,16 +401,17 @@ class Decoder(nn.Module):
         """
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=0)
-        # Encoder是双向的
-        self.rnn = nn.GRU(input_size=embed_size + num_hiddens * 2, hidden_size=num_hiddens, num_layers=num_layers,
+
+        self.rnn = nn.GRU(input_size=embed_size + num_hiddens, hidden_size=num_hiddens, num_layers=num_layers,
                           dropout=dropout)
+
         # 将隐状态转换为词典大小维度
         self.fc_out = nn.Linear(num_hiddens, vocab_size)
         self.vocab_size = vocab_size
         self.dropout = nn.Dropout(dropout)
         self.attention = attention
 
-    def forward(self, input_seq: Tensor, hidden: Tensor, encoder_outputs: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(self, input_seq: Tensor, hidden: Tensor, encoder_outputs: Tensor) -> Tuple[Tensor, Tensor]:
         """
         解码器的前向算法
         :param input_seq: 初始输入，这里为<bos> 形状 (batch_size, )
@@ -511,7 +514,7 @@ def train_epoch(model, data_iter, optimizer, criterion, clip, device, tf_ratio):
 
         epoch_loss += loss.item()
 
-    return epoch_loss
+    return epoch_loss / len(data_iter)
 
 
 def evaluate(model, data_iter, criterion, device):
@@ -528,7 +531,7 @@ def evaluate(model, data_iter, criterion, device):
             loss = criterion(outputs, targets)
             epoch_loss += loss.item()
 
-    return epoch_loss
+    return epoch_loss / len(data_iter)
 
 
 def train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip, device, tf_ratio):
@@ -543,13 +546,60 @@ def train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip,
             f"epoch {epoch:3d} , train loss: {train_loss:.4f} , validate loss: {valid_loss:.4f}, best validate loss: {best_valid_loss:.4f}")
 
 
+def translate(model, src_sentence, src_vocab, tgt_vocab, max_len, device):
+    """翻译一句话"""
+    # 在预测时设置为评估模式
+    model.eval()
+    if isinstance(src_sentence, str):
+        src_tokens = [src_vocab[Vocabulary.BOS_TOKEN]] + [src_sentence.split(' ')] + [src_vocab[Vocabulary.EOS_TOKEN]]
+    else:
+        src_tokens = [src_vocab[Vocabulary.BOS_TOKEN]] + src_vocab[src_sentence] + [src_vocab[Vocabulary.EOS_TOKEN]]
+
+    src_tokens = truncate_pad(src_tokens, max_len, src_vocab[Vocabulary.PAD_TOKEN])
+    # 添加批量轴
+    src_tensor = Tensor(src_tokens, dtype=int, device=device).unsqueeze(1)
+    with no_grad():
+        encoder_outputs, hidden = model.encoder(src_tensor)
+
+    trg_indexes = [tgt_vocab[Vocabulary.BOS_TOKEN]]
+    for _ in range(max_len):
+        trg_tensor = Tensor([trg_indexes[-1]], dtype=int, device=device)
+
+        with no_grad():
+            output, hidden = model.decoder(trg_tensor, hidden, encoder_outputs)
+        # 我们使用具有预测最高可能性的词元，作为解码器在下一时间步的输入
+        pred_token = output.argmax(1).item()
+        # 一旦序列结束词元被预测，输出序列的生成就完成了
+        if pred_token == tgt_vocab[Vocabulary.EOS_TOKEN]:
+            break
+        trg_indexes.append(pred_token)
+
+    return tgt_vocab.to_tokens(trg_indexes)[1:]
+
+
+def cal_bleu_score(net, data_path, src_vocab, tgt_vocab, seq_len, device):
+    net.eval()
+    source, target = build_nmt_pair(os.path.join(data_path, "test.de"),
+                                    os.path.join(data_path, "test.en"),
+                                    reverse=True)
+    predicts = []
+    labels = []
+
+    for src, tgt in zip(source, target):
+        predict = translate(net, src, src_vocab, tgt_vocab, seq_len, device)
+        predicts.append(predict)
+        labels.append([tgt])  # 因为reference可以有多条，所以是一个列表
+
+    return bleu_score(predicts, labels)
+
+
 # 参数定义
-embed_size = 64
-num_hiddens = 64
+embed_size = 256
+num_hiddens = 512
 num_layers = 1
 dropout = 0.5
 
-batch_size = 16
+batch_size = 128
 max_len = 40
 
 lr = 0.001
@@ -577,7 +627,7 @@ test_iter, src_vocab, tgt_vocab = load_dataset_nmt(data_path=base_path, data_typ
 
 # 构建Attention
 # 编码器是双向的
-attention = Attention(num_hiddens * 2, num_hiddens, method="bahdanau")
+attention = Attention(num_hiddens, num_hiddens, method="scaled_dot")
 # 构建编码器
 encoder = Encoder(len(src_vocab), embed_size, num_hiddens, num_layers, dropout)
 # 构建解码器
@@ -597,5 +647,12 @@ optimizer = Adam(model.parameters())
 criterion = CrossEntropyLoss(ignore_index=TGT_PAD_IDX)
 
 train(model, num_epochs, train_iter, valid_iter, optimizer, criterion, clip, device, tf_ratio)
+
+# 加载valid loss最小的模型
+model.load()
+model.to(device)
+
 test_loss = evaluate(model, test_iter, criterion, device)
 print(f"Test loss: {test_loss:.4f}")
+bleu_score = cal_bleu_score(model, base_path, src_vocab, tgt_vocab, max_len, device)
+print(f"BLEU Score = {bleu_score * 100:.2f}")
