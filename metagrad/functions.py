@@ -4,7 +4,7 @@ import numpy as np
 
 from metagrad import cuda
 from metagrad.cuda import get_array_module
-from metagrad.ops import Function, broadcast_grad_shape, unbroadcast
+from metagrad.ops import Function
 from metagrad.tensor import Tensor, NdArray
 
 
@@ -764,7 +764,138 @@ def Recurrent(inner, reverse=False):
     return forward
 
 
-def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bidirectional=False):
+def VariableRecurrentReverse(batch_sizes, inner):
+    def forward(input, hidden, weight):
+        """
+
+        :param input:  单层的输入 大小 PackedSequence (total_seq_len, embed_size) 输入的顺序不变，通过offset从后往前取
+        :param hidden:  (batch_size, hidden_size)
+        :param weight:  list[w_ih, w_hh, b_ih, b_hh]
+        :return:
+        """
+        output = []
+        input_offset = input.size(0) # 初始化为total_seq_len
+        # 逆序先取最后一个批大小
+        last_batch_size = batch_sizes[-1]
+        initial_hidden = hidden
+        flat_hidden = not isinstance(hidden, tuple)
+        if flat_hidden:
+            hidden = (hidden,)
+            initial_hidden = (initial_hidden,)
+        # 前batch_sizes[-1]个
+        hidden = tuple(h[:batch_sizes[-1]] for h in hidden)
+        for batch_size in reversed(batch_sizes): # 以逆序的形式遍历batch_sizes
+            inc = batch_size - last_batch_size # 当前时间步增加的批大小数
+            if inc > 0:
+                # 拼接上一个时间步hidden和initial_hidden中的inc个到hidden中
+                hidden = tuple(cat((h, ih[last_batch_size:batch_size]), 0)
+                               for h, ih in zip(hidden, initial_hidden))
+
+            last_batch_size = batch_size
+            # 从后往前取
+            step_input = input[input_offset - batch_size:input_offset]
+            input_offset -= batch_size
+
+            if flat_hidden:
+                hidden = (inner(step_input, hidden[0], *weight), )
+            else:
+                hidden = inner(step_input, hidden, *weight)
+            # 保存每个时间步输出的隐藏状态
+            output.append(hidden[0])
+        # 按逆序的方式计算的隐藏状态，因此需要进行逆序，使得输入和隐藏状态的位置匹配
+        output.reverse()
+        output = cat(output, 0)
+        if flat_hidden:
+            hidden = hidden[0]
+        # hidden (batch_size, hidden_size) 直接使用第0个时间步的隐藏状态，在逆序时，就是最后一个时间步的隐藏状态
+        # output (total_seq_len, hidden_size)
+        return hidden, output
+
+    return forward
+
+
+def VariableRecurrent(batch_sizes, inner):
+    """
+    可变长度(PackedSequence)RNN的正向计算过程
+    :param batch_sizes: 每个时间步的批大小
+    :param inner: 具体的RNN
+    :return:
+    """
+
+    def forward(input, hidden, weight):
+        """
+        :param input:  单层的输入 大小 PackedSequence (total_seq_len, embed_size)
+        :param hidden:  (batch_size, hidden_size)
+        :param weight:  list[w_ih, w_hh, b_ih, b_hh]
+        :return:
+        """
+        output = []  # 保存每个时间步的隐藏状态
+        input_offset = 0  # 输入的偏移量
+        last_batch_size = batch_sizes[0]  # 最近的batch_size 初始化
+        hiddens = []
+        # 如果hidden不为tuple，即非LSTM
+        flat_hidden = not isinstance(hidden, tuple)
+        if flat_hidden:
+            # hidden 转换成 tuple
+            hidden = (hidden,)
+
+        # 从batch_sizes遍历所有的batch_size
+        for batch_size in batch_sizes:
+            # 得到当前时间步的输入，偏移量开始到batch_size个输入
+            step_input = input[input_offset:input_offset + batch_size]
+            # 更新偏移量
+            input_offset += batch_size
+            # 上一个batch_size 减去 当前batch_size，剩下dec个
+            dec = last_batch_size - batch_size
+            if dec > 0:
+                # h[-dec:]从隐藏状态h的末尾截取dec长度的子序列
+                hiddens.append(tuple(h[-dec:] for h in hidden))
+                # h[:-dec]截取和当前batch_size相同的长度
+                hidden = tuple(h[:-dec] for h in hidden)
+            # 更新最近的batch_size
+            last_batch_size = batch_size
+
+            if flat_hidden:
+                # 如果是非LSTM，则取hidden[0]，实际的RNN计算，注意：并且把返回结果转换为一个元组
+                hidden = (inner(step_input, hidden[0], *weight),)
+            else:
+                # 否则直接传入
+                hidden = inner(step_input, hidden, *weight)
+            # 保存所有的hidden：非LSTM就是真实结果；LSTM即hidden，非cell
+            output.append(hidden[0])
+        # 保存最后的时间步计算出来的有效hidden
+        hiddens.append(hidden)
+        # hiddens列表中元素的顺序是从最长序列到最短序列
+        # 将hiddens列表中元素的顺序反转，变成从最短序列到最长序列
+        # 与后续处理步骤相匹配
+        hiddens.reverse()
+        # 拼接hiddens
+        hidden = tuple(cat(h, 0) for h in zip(*hiddens))
+        # hidden[0]是得到的与最长序列长度相同的隐藏状态
+        assert hidden[0].size(0) == batch_sizes[0]
+
+        if flat_hidden:
+            hidden = hidden[0]
+        # 拼接output，变成 (total_seq_len, hidden_size)
+        output = cat(output, 0)
+        # hidden (batch_size, hidden_size)
+        return hidden, output
+
+    return forward
+
+
+def variable_recurrent_factory(batch_sizes):
+    def fac(inner, reverse=False):
+        # 如果是逆序
+        if reverse:
+            return VariableRecurrentReverse(batch_sizes, inner)
+        else:
+            return VariableRecurrent(batch_sizes, inner)
+
+    return fac
+
+
+def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bidirectional=False, batch_sizes=None):
     if mode == 'RNN_RELU':
         cell = RNNReLUCell
     elif mode == 'RNN_TANH':
@@ -774,10 +905,17 @@ def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bi
     else:
         cell = GRUCell
 
-    if bidirectional:
-        layer = (Recurrent(cell), Recurrent(cell, reverse=True))
+    if batch_sizes is None:
+        # 非压缩模式
+        rec_factory = Recurrent
     else:
-        layer = (Recurrent(cell),)
+        # 压缩模式，通过 rnn 工厂方法返回具体的函数
+        rec_factory = variable_recurrent_factory(batch_sizes)
+
+    if bidirectional:
+        layer = (rec_factory(cell), rec_factory(cell, reverse=True))
+    else:
+        layer = (rec_factory(cell),)
     # 堆叠RNN
     func = StackedRNN(layer,
                       num_layers,
@@ -797,7 +935,7 @@ def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bi
 
         """
         # 确保输入(seq_len, batch_size, input_size)的形式，方便后续通过input[timestep]的方式访问每个时间步的输入
-        if batch_first:
+        if batch_first and batch_sizes is None:
             input = input.permute(1, 0, 2)
         # 在输入input上应用RNN，返回(可能包含多层和双向)结果
         # nexth
@@ -806,7 +944,7 @@ def AutogradRNN(mode, num_layers=1, batch_first=False, dropout=0, train=True, bi
         # output (seq_len, batch_size, num_directions * hidden_size)
         nexth, output = func(input, hidden, weight)
         # 确保output的形状符合batch_first参数定义
-        if batch_first:
+        if batch_first and batch_sizes is None:
             output = output.permute(1, 0, 2)
 
         return output, nexth
