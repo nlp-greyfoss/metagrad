@@ -9,6 +9,7 @@ import metagrad.functions as F
 from metagrad import init
 from metagrad.paramater import Parameter
 from metagrad.tensor import Tensor, no_grad, float_type
+from metagrad.rnn_utils import PackedSequence
 
 
 def _addindent(s_, numSpaces):
@@ -167,20 +168,31 @@ class Module:
 
         return destination
 
+    def _load_from_state_dict(self, state_dict, prefix):
+        local_name_params = self._parameters.items()
+        local_state = {k: v for k, v in local_name_params if v is not None}
+
+        for name, param in local_state.items():
+            key = prefix + name
+            if key in state_dict:
+                input_param = state_dict[key]
+                with no_grad():
+                    # 赋值给param
+                    param.data = input_param
+
     def load_state_dict(self, state_dict):
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            if name not in own_state:
-                raise KeyError(f'unexpected key "{name}" in state_dict')
+        state_dict = OrderedDict(state_dict)
 
-            if isinstance(param, Parameter):
-                param = param.data
+        def load(module, local_state_dict, prefix=""):
+            module._load_from_state_dict(local_state_dict, prefix)
+            for name, child in module._modules.items():
+                if child is not None:
+                    child_prefix = prefix + name + '.'
+                    child_state_dict = {k: v for k, v in local_state_dict.items() if k.startswith(child_prefix)}
+                    load(child, child_state_dict, child_prefix)
 
-            own_state[name] = param
-
-        missing = set(own_state.keys()) - set(state_dict.keys())
-        if len(missing) > 0:
-            raise KeyError(f'missing keys in state_dict: "{missing}"')
+        load(self, state_dict)
+        del load
 
     def save(self, path='model.pkl'):
         state_dict = self.state_dict()
@@ -271,6 +283,13 @@ class Module:
                 modules[name] = value
             else:
                 super().__setattr__(name, value)
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
+    def __getstate(self):
+        state = self.__dict__.copy()
+        return state
 
     def __getattr__(self, name: str) -> Union[Tensor, 'Module']:
         if '_parameters' in self.__dict__:
@@ -767,12 +786,22 @@ class RNNBase(Module):
             init.uniform_(weight, -stdv, stdv)
 
     def forward(self, input, hx=None):
-        batch_size = input.size(0) if self.batch_first else input.size(1)
+        # 判断是否为压缩序列
+        is_packed = isinstance(input, PackedSequence)
+        if is_packed:
+            # 从中抽出输入和batch_sizes
+            input, batch_sizes = input
+            # 第0个时间步一定是最大批次
+            max_batch_size = batch_sizes[0]
+        else:
+            # 否则max_batch_size就是批大小
+            batch_sizes = None
+            max_batch_size = input.size(0) if self.batch_first else input.size(1)
 
         if hx is None:
             num_directions = 2 if self.bidirectional else 1
             # (num_layers * num_directions, batch_size, hidden_size)
-            hx = Tensor.zeros((self.num_layers * num_directions, batch_size, self.hidden_size), device=input.device)
+            hx = Tensor.zeros((self.num_layers * num_directions, max_batch_size, self.hidden_size), device=input.device)
 
             if self.mode == 'LSTM':
                 hx = (hx, hx)  # 如果是LSTM，同时初始化隐藏状态h，与单元状态c
@@ -783,10 +812,15 @@ class RNNBase(Module):
             batch_first=self.batch_first,
             dropout=self.dropout,
             train=self.training,
-            bidirectional=self.bidirectional
+            bidirectional=self.bidirectional,
+            batch_sizes=batch_sizes # 传入batch_sizes
         )
 
         output, hidden = func(input, self.all_weights, hx)
+        if is_packed:
+            # 转换为PackedSequence
+            # output (total_seq_len, hidden_size)
+            output = PackedSequence(output, batch_sizes)
 
         return output, hidden
 

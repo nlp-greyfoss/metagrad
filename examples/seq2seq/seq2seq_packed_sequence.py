@@ -2,9 +2,12 @@ import math
 import os
 import random
 from collections import defaultdict
-from typing import Tuple
+from typing import Tuple, List
 
 from tqdm import tqdm
+
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 import metagrad.module as nn
 from metagrad import Tensor, cuda
@@ -18,6 +21,7 @@ from metagrad.metrics import bleu_score
 
 from metagrad.tensor import no_grad
 from metagrad.utils import grad_clipping
+from metagrad.rnn_utils import pad_packed_sequence, pack_padded_sequence
 
 """
 数据集来自已经分好词的版本： https://github.com/multi30k/dataset/tree/master/data/task1/tok
@@ -208,6 +212,7 @@ def load_dataset_nmt(data_path=base_path, data_type="train", batch_size=32, min_
 
     # 构建数据集
     dataset = TensorDataset(src_array, tgt_array)
+
     # 数据加载器
     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
     # 返回加载器和两个词表
@@ -307,12 +312,13 @@ class Attention(nn.Module):
             # squeeze -> (src_len, batch_size)
             return self.v(energy).squeeze(2)
 
-    def forward(self, hidden: Tensor, encoder_outputs: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, hidden: Tensor, encoder_outputs: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:
         """
 
         Args:
             hidden: (batch_size, decoder_hidden_size)  解码器前一时刻的隐藏状态
             encoder_outputs: (src_len, batch_size, encoder_hidden_size) 编码器的输出(隐藏状态)序列
+            mask: (batch_size, src_len) 掩码矩阵，0对应填充位置
 
         Returns: 注意力权重， 上下文向量
 
@@ -321,7 +327,9 @@ class Attention(nn.Module):
         attn_scores = self._score(hidden, encoder_outputs)
         # (batch_size, src_len)
         attn_scores = attn_scores.T
-        # (batch_size, 1, src_len)
+        # attn_scores (batch_size, 1, src_len)
+        # 设置一个负的很大的数，指数之后变成0， 使得不会注意到这些填充词
+        attn_scores = attn_scores.masked_fill(mask == 0, -1e10)
         attention_weight = F.softmax(attn_scores, axis=1).unsqueeze(1)
         # encoder_outputs = (batch_size, src_len, num_hiddens)
         encoder_outputs = encoder_outputs.transpose((1, 0, 2))
@@ -358,15 +366,21 @@ class Encoder(nn.Module):
         self.fc = nn.Linear(num_hiddens * 2, num_hiddens)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, input_seq: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input_seq: Tensor, input_len: List[int]) -> Tuple[Tensor, Tensor]:
         """
         编码器的前向算法
         :param input_seq:  形状 (seq_len, batch_size)
+        :param input_len:  输入序列的真实长度
         :return:
         """
 
         # (seq_len, batch_size, embed_size)
         embedded = self.dropout(self.embedding(input_seq))
+
+
+        packed_embedded = pack_padded_sequence(embedded, input_len)
+
+
         # embedded = self.embedding(input_seq)
         # outputs (seq_len, batch_size, 2 * num_hiddens)
         # hidden  (num_direction * num_layers, batch_size, num_hiddens)
@@ -411,12 +425,15 @@ class Decoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.attention = attention
 
-    def forward(self, input_seq: Tensor, hidden: Tensor, encoder_outputs: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, input_seq: Tensor, hidden: Tensor, encoder_outputs: Tensor, mask: Tensor) -> Tuple[
+        Tensor, Tensor, Tensor]:
         """
         解码器的前向算法
         :param input_seq: 初始输入，这里为<bos> 形状 (batch_size, )
         :param hidden:  解码器的隐藏状态 (batch_size, num_hiddens)
         :param encoder_outputs: 编码器的输出的隐藏状态序列 形状 (src_len, batch_size, num_hiddens)
+        :param mask: (batch_size, src_len) 掩码矩阵，0对应填充位置
+
         :return:
         """
         # input = (1, batch_size)
@@ -426,7 +443,7 @@ class Decoder(nn.Module):
 
         # attention = (batch_size, 1, src_len)
         # context = (1, batch_size, num_hiddens)
-        attention, context = self.attention(hidden, encoder_outputs)
+        attention, context = self.attention(hidden, encoder_outputs, mask)
 
         # embedded_context = (1, batch_size, embed_size + hidden_dim)
         embedded_context = F.cat((embedded, context), 2)
@@ -437,11 +454,12 @@ class Decoder(nn.Module):
         # prediction (batch_size, vocab_size)
         prediction = self.fc_out(output.squeeze(0))
         # hidden = (batch_size, num_hiddens)
-        return prediction, hidden.squeeze(0)
+        # attention (batch_size, src_len)
+        return prediction, hidden.squeeze(0), attention.squeeze(1)
 
 
 class Seq2seq(nn.Module):
-    def __init__(self, encoder: Encoder, decoder: Decoder) -> None:
+    def __init__(self, encoder: Encoder, decoder: Decoder, src_pad_idx: 0) -> None:
         """
         初始化seq2seq模型
         :param encoder: 编码器
@@ -450,6 +468,11 @@ class Seq2seq(nn.Module):
         super().__init__()
         self.encoder = encoder
         self.decoder = decoder
+        self.src_pad_idx = src_pad_idx
+
+    def get_mask(self, src):
+        mask = (src != self.src_pad_idx).permute(1, 0)
+        return mask
 
     def forward(self, input_seq: Tensor, target_seq: Tensor, teacher_forcing_ratio: float = 0.0) -> Tensor:
         """
@@ -469,6 +492,9 @@ class Seq2seq(nn.Module):
 
         # decoder_input (batch_size) 取BOS token
         decoder_input = target_seq[0, :]  # BOS_TOKEN
+
+        mask = self.get_mask(input_seq)
+
         # 这里从1开始，确保tgt[t]是下一个token
         for t in range(1, tgt_len):
             # output (batch_size, target_vocab_size)

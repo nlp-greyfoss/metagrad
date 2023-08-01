@@ -4,6 +4,7 @@ import numpy as np
 
 from metagrad import Tensor
 from metagrad.utils import ngrams_iterator
+from typing import List
 
 
 def _compute_ngram_counter(tokens, max_n):
@@ -28,7 +29,8 @@ def bleu_score2(pred_seq, label_seq, k=4):
     return score
 
 
-def bleu_score(candidate_corpus, references_corpus, max_n=4, weights=[0.25] * 4):
+def bleu_score(candidate_corpus, references_corpus, max_n: int = 4,
+               weights=[0.25] * 4) -> float:
     clipped_counts = np.zeros(max_n)
     total_counts = np.zeros(max_n)
     weights = np.array(weights)
