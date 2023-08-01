@@ -662,6 +662,22 @@ class Slice(Function):
         return bigger_grad
 
 
+class MaskedFill(Function):
+    def forward(self, x: NdArray, mask: NdArray, value: float) -> NdArray:
+        x[mask] = value
+        self.save_for_backward(mask)
+        return x
+
+    def backward(self, grad: NdArray) -> NdArray:
+        mask, = self.saved_tensors
+        grad[mask] = 0.  # mask住的部分没有梯度
+        return grad
+
+
+def masked_fill(self, mask, value):
+    return MaskedFill()(self, mask, value)
+
+
 # class SetItem(Function):
 #     def forward(self, x: NdArray, slices: Any, value: NdArray) -> NdArray:
 #         xp = get_array_module(x)
@@ -776,7 +792,7 @@ class Repeat(Function):
         xp = get_array_module(x)
 
         if isinstance(repeats, int):
-            repeats = xp.array(repeats,)
+            repeats = xp.array(repeats, )
         elif isinstance(repeats, Tuple):
             repeats = xp.array(repeats)
 
@@ -817,6 +833,7 @@ def install_ops():
     Tensor.__truediv__ = div
     Tensor.__rtruediv__ = rdiv
     Tensor.__itruediv__ = lambda self, x: self.assign(div(self, x))
+    Tensor.masked_fill = masked_fill
     Tensor.add_ = add_
     Tensor.mul_ = mul_
     Tensor.addcmul_ = addcmul_
