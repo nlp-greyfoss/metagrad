@@ -265,6 +265,11 @@ class Tensor:
         other = ensure_tensor(other, self.device)
         return self.data < other.data
 
+    def __eq__(self, other):
+        if isinstance(other, Tensor):
+            return self.data == other.data
+        return self.data == other
+
     def assign(self, x) -> "Tensor":
         '''将x的值赋予当前Tensor'''
         x = ensure_tensor(x, self.device)

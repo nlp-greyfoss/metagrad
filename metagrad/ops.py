@@ -375,6 +375,33 @@ class Mean(Function):
         return broadcast_grad_shape(x_shape, get_array_module(grad), grad, axis, keepdims)
 
 
+class Std(Function):
+    def forward(self, x: NdArray, axis=None, keepdims=False) -> NdArray:
+        xp = get_array_module(x)
+        # 计算均值
+        mean = x.mean(axis, keepdims=keepdims)
+        # 计算方差
+        var = x.var(axis=axis, keepdims=keepdims)
+        # 开根号
+        std = xp.sqrt(var)
+        self.save_for_backward(x, mean, var, axis, xp)
+
+        return std
+
+    def backward(self, dout: NdArray) -> NdArray:
+        x, mean, var, axis, xp = self.saved_tensors
+        if axis is None:
+            N = np.prod(x.shape)  # 参与计算的元素个数
+            dx = dout * (2.0 / N) * (x - mean) / (2 * xp.sqrt(var))
+        else:
+            axis_shape = list(x.shape)
+            axis_shape[axis] = 1
+            N = np.prod(axis_shape)  # 参与计算的元素个数
+            dx = dout * (2.0 / N) * (x - mean) / (2 * xp.sqrt(var))
+
+        return dx
+
+
 class Max(Function):
     def forward(self, x: NdArray, axis=None, keepdims=False) -> NdArray:
         '''
@@ -664,6 +691,9 @@ class Slice(Function):
 
 class MaskedFill(Function):
     def forward(self, x: NdArray, mask: NdArray, value: float) -> NdArray:
+        xp = get_array_module(x)
+        mask = xp.broadcast_to(mask, x.shape)
+
         x[mask] = value
         self.save_for_backward(mask)
         return x
