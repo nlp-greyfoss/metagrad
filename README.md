@@ -50,8 +50,8 @@ N-Gram语言模型 --> 加速CuPy运算
 LSTM --> Seq2Seq 
 LSTM --> 带注意力机制的Seq2seq
 LSTM --> 注意力机制
-带注意力机制的Seq2seq  --> CNN 
-CNN --> TextCNN -->  ELMO --> Transformer  --> BERT 
+带注意力机制的Seq2seq 
+
 
 click Graph "https://helloai.blog.csdn.net/article/details/121964022"
 click Operator "https://helloai.blog.csdn.net/article/details/122024945"
@@ -73,4 +73,13 @@ click 实现电影评论分类 "https://helloai.blog.csdn.net/article/details/12
 click N-Gram语言模型 "https://helloai.blog.csdn.net/article/details/124384220"
 click 利用GPU加速 "https://helloai.blog.csdn.net/article/details/124840221"
 click 从共现矩阵到点互信息 "https://helloai.blog.csdn.net/article/details/124872206"
+click Word2vec "https://helloai.blog.csdn.net/article/details/124886086"
+click 加速CuPy运算 "https://helloai.blog.csdn.net/article/details/124840221"
+click 神经概率语言模型 "https://helloai.blog.csdn.net/article/details/125059374"
+click GloVe "https://helloai.blog.csdn.net/article/details/125793540"
+click RNN "https://helloai.blog.csdn.net/article/details/125368951"
+click LSTM "https://helloai.blog.csdn.net/article/details/125504178"
+click GRU "https://helloai.blog.csdn.net/article/details/125663927"
+click Seq2Seq "https://helloai.blog.csdn.net/article/details/126704328"
+click 带注意力机制的Seq2seq "https://helloai.blog.csdn.net/article/details/131662891"
 ```
