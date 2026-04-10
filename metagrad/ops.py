@@ -375,6 +375,33 @@ class Mean(Function):
         return broadcast_grad_shape(x_shape, get_array_module(grad), grad, axis, keepdims)
 
 
+class Std(Function):
+    def forward(self, x: NdArray, axis=None, keepdims=False) -> NdArray:
+        xp = get_array_module(x)
+        # 计算均值
+        mean = x.mean(axis, keepdims=keepdims)
+        # 计算方差
+        var = x.var(axis=axis, keepdims=keepdims)
+        # 开根号
+        std = xp.sqrt(var)
+        self.save_for_backward(x, mean, var, axis, xp)
+
+        return std
+
+    def backward(self, dout: NdArray) -> NdArray:
+        x, mean, var, axis, xp = self.saved_tensors
+        if axis is None:
+            N = np.prod(x.shape)  # 参与计算的元素个数
+            dx = dout * (2.0 / N) * (x - mean) / (2 * xp.sqrt(var))
+        else:
+            axis_shape = list(x.shape)
+            axis_shape[axis] = 1
+            N = np.prod(axis_shape)  # 参与计算的元素个数
+            dx = dout * (2.0 / N) * (x - mean) / (2 * xp.sqrt(var))
+
+        return dx
+
+
 class Max(Function):
     def forward(self, x: NdArray, axis=None, keepdims=False) -> NdArray:
         '''
@@ -662,6 +689,25 @@ class Slice(Function):
         return bigger_grad
 
 
+class MaskedFill(Function):
+    def forward(self, x: NdArray, mask: NdArray, value: float) -> NdArray:
+        xp = get_array_module(x)
+        mask = xp.broadcast_to(mask, x.shape)
+
+        x[mask] = value
+        self.save_for_backward(mask)
+        return x
+
+    def backward(self, grad: NdArray) -> NdArray:
+        mask, = self.saved_tensors
+        grad[mask] = 0.  # mask住的部分没有梯度
+        return grad
+
+
+def masked_fill(self, mask, value):
+    return MaskedFill()(self, mask, value)
+
+
 # class SetItem(Function):
 #     def forward(self, x: NdArray, slices: Any, value: NdArray) -> NdArray:
 #         xp = get_array_module(x)
@@ -776,7 +822,7 @@ class Repeat(Function):
         xp = get_array_module(x)
 
         if isinstance(repeats, int):
-            repeats = xp.array(repeats,)
+            repeats = xp.array(repeats, )
         elif isinstance(repeats, Tuple):
             repeats = xp.array(repeats)
 
@@ -817,6 +863,7 @@ def install_ops():
     Tensor.__truediv__ = div
     Tensor.__rtruediv__ = rdiv
     Tensor.__itruediv__ = lambda self, x: self.assign(div(self, x))
+    Tensor.masked_fill = masked_fill
     Tensor.add_ = add_
     Tensor.mul_ = mul_
     Tensor.addcmul_ = addcmul_

@@ -813,7 +813,7 @@ class RNNBase(Module):
             dropout=self.dropout,
             train=self.training,
             bidirectional=self.bidirectional,
-            batch_sizes=batch_sizes # 传入batch_sizes
+            batch_sizes=batch_sizes  # 传入batch_sizes
         )
 
         output, hidden = func(input, self.all_weights, hx)
@@ -886,3 +886,31 @@ class LSTM(RNNBase):
 
     def __init__(self, *args, **kwargs):
         super(LSTM, self).__init__('LSTM', *args, **kwargs)
+
+
+class LayerNorm(Module):
+    def __init__(self, features: int, eps: float = 1e-6):
+        """
+
+        Args:
+            features: 特征个数
+            eps:
+        """
+
+        super().__init__()
+        self.gamma = Parameter(Tensor.ones(features))
+        self.beta = Parameter(Tensor.zeros(features))
+        self.eps = eps
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+
+        Args:
+            x: (batch_size, input_len, emb_size)
+
+        Returns:
+
+        """
+        mean = x.mean(-1, keepdims=True)
+        std = x.std(-1, keepdims=True)
+        return self.gamma * (x - mean) / (std + self.eps) + self.beta
